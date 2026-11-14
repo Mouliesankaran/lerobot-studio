@@ -823,8 +823,10 @@ Awaiting calibration generation...
               </div>
             </div>
 
-            <!-- Live Video Stream Element -->
+            <!-- Live Video Stream Elements (Native Web & MJPEG Fallback) -->
+            <video class="cam-feed-img" id="cam-feed-video" autoplay playsinline muted style="display:none; width:100%; height:100%; object-fit:contain;"></video>
             <img class="cam-feed-img" id="cam-feed-img" src="" alt="Live Video Feed" style="display:none;">
+            <canvas id="cam-feed-canvas" style="display:none;"></canvas>
 
             <!-- HUD Overlay -->
             <div class="cam-hud-overlay" id="cam-hud-overlay" style="display:none;">
@@ -977,6 +979,47 @@ Awaiting calibration generation...
           <pre id="settings-calib-view" style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-family:monospace; font-size:0.75rem; color:#cbd5e1; max-height:260px; overflow-y:auto;">
 Loading calibration...
           </pre>
+        </div>
+
+        <!-- CARD: DOWNLOAD DESKTOP TOOLS & OFFLINE BRIDGES -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">💾</span> Downloads &amp; Offline Desktop Tools
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+            <div style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px;">
+              <h4 style="font-size:0.9rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                <span>📦</span> Complete Windows Standalone ZIP
+              </h4>
+              <p style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
+                Download the complete standalone bridge package for Windows. Contains the 1-click launcher, pure Python STS3215 driver, calibrated homing angles, and setup instructions.
+              </p>
+              <div style="margin-top:auto; padding-top:6px;">
+                <a href="so101_windows_bridge.zip" download="so101_windows_bridge.zip" class="btn btn-success" style="text-decoration:none; display:inline-flex; align-items:center; gap:8px; font-size:0.8rem; font-weight:700;">
+                  ⬇ Download Windows Package (.zip)
+                </a>
+              </div>
+            </div>
+
+            <div style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px;">
+              <h4 style="font-size:0.9rem; color:#fff; display:flex; align-items:center; gap:8px;">
+                <span>🪟</span> Individual Script Files
+              </h4>
+              <p style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
+                Download the lightweight scripts directly to run or integrate with your custom Python robotics pipelines:
+              </p>
+              <div style="margin-top:auto; display:flex; gap:8px; flex-wrap:wrap; padding-top:6px;">
+                <a href="run_windows.bat" download="run_windows.bat" class="btn btn-primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.76rem;">
+                  ⬇ run_windows.bat
+                </a>
+                <a href="bridge_standalone.py" download="bridge_standalone.py" class="btn btn-outline" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.76rem;">
+                  ⬇ bridge_standalone.py
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
 
       </section>
@@ -2734,34 +2777,68 @@ Loading calibration...
 
     // ========================================================
     // CAMERA STUDIO & LIVE VIEWER (REQUIREMENTS 3, 4, 5)
+    // Hybrid: Direct Browser getUserMedia (Render/Static) + Bridge API (Local ROS 2)
     // ========================================================
     let activeStreamMode = 'rgb';
     let cameraPollTimer = null;
     let isCameraConnected = false;
+    let activeMediaStream = null;
 
-    function loadCameraDevices() {
+    function isBridgeAvailable() {
+      return (ws && ws.readyState === WebSocket.OPEN) || (connectionMode === 'bridge');
+    }
+
+    // Populate camera devices: First checks Browser Native Webcams (Windows, Mac, Linux), then falls back/merges with Bridge devices
+    async function loadCameraDevices() {
+      const select = document.getElementById('cam-device-select');
+      if (!select) return;
+
+      let foundBrowserCameras = false;
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevs = devices.filter(d => d.kind === 'videoinput');
+          if (videoDevs.length > 0) {
+            select.innerHTML = '';
+            videoDevs.forEach((d, idx) => {
+              const opt = document.createElement('option');
+              opt.value = d.deviceId;
+              opt.innerText = d.label || `Camera ${idx + 1} (${d.deviceId ? d.deviceId.slice(0, 8) : 'USB'})`;
+              opt.setAttribute('data-type', 'browser');
+              opt.setAttribute('data-depth', '0');
+              select.appendChild(opt);
+            });
+            foundBrowserCameras = true;
+          }
+        } catch(e) {
+          console.warn("Browser camera enumeration:", e);
+        }
+      }
+
+      // If local Python bridge is also running, fetch hardware devices as well
       fetch(apiUrl('/api/camera/devices'))
         .then(r => r.json())
         .then(data => {
-          const select = document.getElementById('cam-device-select');
-          if (!select) return;
-          select.innerHTML = '';
           const devices = data.devices || [];
-          if (devices.length === 0) {
-            select.innerHTML = '<option value="/dev/video0">/dev/video0 (Default Video Device)</option>';
-            return;
+          if (devices.length > 0 && !foundBrowserCameras) {
+            select.innerHTML = '';
           }
           devices.forEach(d => {
             const opt = document.createElement('option');
             opt.value = d.id;
-            opt.innerText = d.name;
+            opt.innerText = `${d.name} (Bridge)`;
             opt.setAttribute('data-type', d.type);
             opt.setAttribute('data-depth', d.has_depth ? '1' : '0');
             select.appendChild(opt);
           });
           updateCameraModelCapabilities();
         })
-        .catch(err => console.error("Error scanning cameras:", err));
+        .catch(() => {
+          if (!foundBrowserCameras && select.options.length === 0) {
+            select.innerHTML = '<option value="default">Default Web Camera (Browser Direct)</option>';
+          }
+          updateCameraModelCapabilities();
+        });
     }
 
     function updateCameraModelCapabilities() {
@@ -2807,7 +2884,7 @@ Loading calibration...
         badge.innerText = 'RGB ONLY';
         depthBtn.disabled = true;
         sbsBtn.disabled = true;
-        hint.innerText = '• Standard UVC / V4L2 webcams stream native RGB. (Depth options require RealSense or Orbbec).';
+        hint.innerText = '• Standard USB webcams stream native RGB in browser. Depth modes require RealSense/Orbbec SDK on local bridge.';
         if (activeStreamMode !== 'rgb') setStreamMode('rgb');
       }
     }
@@ -2839,13 +2916,13 @@ Loading calibration...
         liveBadge.className = "cam-badge-tag rgb";
       }
 
-      if (isCameraConnected) {
+      if (isCameraConnected && !activeMediaStream) {
         feedImg.src = apiUrl(`/api/camera/stream?mode=${mode}&t=${Date.now()}`);
         fetch(apiUrl('/api/camera/settings'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ stream_mode: mode })
-        });
+        }).catch(() => {});
       }
     }
 
@@ -2853,19 +2930,129 @@ Loading calibration...
     document.getElementById('btn-stream-depth').addEventListener('click', () => setStreamMode('depth'));
     document.getElementById('btn-stream-sbs').addEventListener('click', () => setStreamMode('side_by_side'));
 
-    // Connect Camera
-    document.getElementById('btn-cam-connect').addEventListener('click', () => {
+    function setCameraConnectedUI(sourceName, width, height, fps) {
+      isCameraConnected = true;
+      document.getElementById('btn-cam-connect').disabled = true;
+      document.getElementById('btn-cam-disconnect').disabled = false;
+
+      const indicator = document.getElementById('cam-status-indicator');
+      indicator.className = 'conn-status-indicator online';
+      document.getElementById('cam-status-msg').innerText = `Online: ${sourceName}`;
+
+      document.getElementById('cam-offline-ui').style.display = 'none';
+      document.getElementById('cam-hud-overlay').style.display = 'flex';
+      document.getElementById('cam-live-dot').style.display = 'inline-block';
+      document.getElementById('cam-live-text').innerText = "LIVE STREAMING";
+      document.getElementById('hud-res-text').innerText = `${width}x${height}`;
+      document.getElementById('hud-fps-text').innerText = `${fps}.0 FPS`;
+      document.getElementById('cam-sum-src').innerText = sourceName;
+      document.getElementById('cam-sum-fps').innerText = `${fps}.0 FPS`;
+    }
+
+    function setCameraDisconnectedUI() {
+      isCameraConnected = false;
+      if (cameraPollTimer) clearInterval(cameraPollTimer);
+      if (activeMediaStream) {
+        try {
+          activeMediaStream.getTracks().forEach(track => track.stop());
+        } catch(e) {}
+        activeMediaStream = null;
+      }
+
+      const feedVideo = document.getElementById('cam-feed-video');
+      if (feedVideo) {
+        feedVideo.pause();
+        feedVideo.srcObject = null;
+        feedVideo.style.display = 'none';
+      }
+
+      const feedImg = document.getElementById('cam-feed-img');
+      if (feedImg) {
+        feedImg.src = '';
+        feedImg.style.display = 'none';
+      }
+
+      document.getElementById('btn-cam-connect').disabled = false;
+      document.getElementById('btn-cam-disconnect').disabled = true;
+      document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
+      document.getElementById('cam-status-msg').innerText = "Camera Disconnected";
+      document.getElementById('cam-offline-ui').style.display = 'flex';
+      document.getElementById('cam-hud-overlay').style.display = 'none';
+      document.getElementById('cam-live-dot').style.display = 'none';
+      document.getElementById('cam-live-text').innerText = "Standby";
+      document.getElementById('cam-sum-fps').innerText = "0.0 FPS";
+    }
+
+    // Connect Camera (Native Web Stream with Local Bridge Fallback)
+    document.getElementById('btn-cam-connect').addEventListener('click', async () => {
       const model = document.getElementById('cam-model-select').value;
-      const devId = document.getElementById('cam-device-select').value || '/dev/video0';
+      const devSelect = document.getElementById('cam-device-select');
+      const devId = devSelect ? devSelect.value : 'default';
+      const devName = devSelect && devSelect.selectedOptions[0] ? devSelect.selectedOptions[0].innerText : "Webcam";
       const res = document.getElementById('cam-res-select').value.split('x');
-      const width = parseInt(res[0]);
-      const height = parseInt(res[1]);
-      const fps = parseInt(document.getElementById('cam-fps-select').value);
+      const width = parseInt(res[0]) || 640;
+      const height = parseInt(res[1]) || 480;
+      const fps = parseInt(document.getElementById('cam-fps-select').value) || 30;
       const customUrl = document.getElementById('cam-url-input').value;
 
       document.getElementById('cam-status-msg').innerText = "Connecting to camera hardware...";
       document.getElementById('btn-cam-connect').disabled = true;
 
+      // MODE 1: IP Camera / ESP32-CAM stream
+      if (model === 'network') {
+        const feedImg = document.getElementById('cam-feed-img');
+        const feedVideo = document.getElementById('cam-feed-video');
+        feedVideo.style.display = 'none';
+        feedImg.style.display = 'block';
+        feedImg.src = customUrl;
+        setCameraConnectedUI(customUrl, width, height, fps);
+        appendLog(`Connected to network camera stream at: ${customUrl}`);
+        return;
+      }
+
+      // MODE 2: Browser-Native Direct Webcam (Works on Windows, Linux, macOS on Render - ZERO BACKEND REQUIRED!)
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (!devId.startsWith('/dev/') || connectionMode === 'webserial')) {
+        try {
+          const constraints = {
+            video: {
+              width: { ideal: width },
+              height: { ideal: height },
+              frameRate: { ideal: fps }
+            }
+          };
+          if (devId && devId !== 'default' && !devId.startsWith('/dev/')) {
+            constraints.video.deviceId = { exact: devId };
+          }
+
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          activeMediaStream = stream;
+
+          const feedVideo = document.getElementById('cam-feed-video');
+          const feedImg = document.getElementById('cam-feed-img');
+          feedImg.style.display = 'none';
+          feedVideo.style.display = 'block';
+          feedVideo.srcObject = stream;
+          await feedVideo.play();
+
+          setCameraConnectedUI(devName, width, height, fps);
+          appendLog(`Browser Camera connected: ${devName} (${width}x${height} @ ${fps}FPS)`);
+
+          // Refresh devices to populate full hardware labels now that permission is active
+          loadCameraDevices();
+          return;
+        } catch (webcamErr) {
+          console.warn("Browser direct webcam access did not open, trying bridge API...", webcamErr);
+          if (connectionMode === 'webserial' || !isBridgeAvailable()) {
+            document.getElementById('btn-cam-connect').disabled = false;
+            document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
+            document.getElementById('cam-status-msg').innerText = "Camera Permission Denied or Not Detected";
+            alert("Could not open camera in browser: " + (webcamErr.message || webcamErr) + "\nPlease allow camera permission in Chrome/Edge, or plug in a USB webcam.");
+            return;
+          }
+        }
+      }
+
+      // MODE 3: Local Python Bridge API Fallback (for RealSense / Orbbec Depth SDKs)
       fetch(apiUrl('/api/camera/connect'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2881,43 +3068,17 @@ Loading calibration...
       .then(r => r.json())
       .then(data => {
         if (data.success) {
-          isCameraConnected = true;
-          document.getElementById('btn-cam-connect').disabled = true;
-          document.getElementById('btn-cam-disconnect').disabled = false;
-
-          const indicator = document.getElementById('cam-status-indicator');
-          indicator.className = 'conn-status-indicator online';
-          document.getElementById('cam-status-msg').innerText = `Online: ${data.message}`;
-
-          // Show viewport
+          const feedVideo = document.getElementById('cam-feed-video');
           const feedImg = document.getElementById('cam-feed-img');
-          feedImg.onload = () => {
-            document.getElementById('cam-offline-ui').style.display = 'none';
-            feedImg.style.display = 'block';
-          };
-          feedImg.onerror = () => {
-            if (isCameraConnected) {
-              setTimeout(() => {
-                if (isCameraConnected) {
-                  feedImg.src = apiUrl(`/api/camera/stream?mode=${activeStreamMode}&t=${Date.now()}`);
-                }
-              }, 400);
-            }
-          };
-          document.getElementById('cam-offline-ui').style.display = 'none';
+          feedVideo.style.display = 'none';
           feedImg.style.display = 'block';
           feedImg.src = apiUrl(`/api/camera/stream?mode=${activeStreamMode}&t=${Date.now()}`);
-          document.getElementById('cam-hud-overlay').style.display = 'flex';
-          document.getElementById('cam-live-dot').style.display = 'inline-block';
-          document.getElementById('cam-live-text').innerText = "LIVE STREAMING";
-          document.getElementById('hud-res-text').innerText = `${width}x${height}`;
 
-          document.getElementById('cam-sum-src').innerText = (model === 'network' ? customUrl : devId);
-
+          setCameraConnectedUI(devName, width, height, fps);
           if (cameraPollTimer) clearInterval(cameraPollTimer);
           cameraPollTimer = setInterval(pollCameraStatus, 1000);
           pollCameraStatus();
-          appendLog(`Camera connected: ${data.message}`);
+          appendLog(`Camera connected via bridge: ${data.message}`);
         } else {
           document.getElementById('btn-cam-connect').disabled = false;
           document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
@@ -2927,36 +3088,22 @@ Loading calibration...
       })
       .catch(err => {
         document.getElementById('btn-cam-connect').disabled = false;
-        alert("Network error: " + err);
+        document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
+        document.getElementById('cam-status-msg').innerText = "Camera Bridge Offline";
+        alert("Could not connect to camera.\n\nTip: In browser mode, select 'Standard USB / UVC Webcam' to use your laptop or USB webcam directly!");
       });
     });
 
     // Disconnect Camera
     document.getElementById('btn-cam-disconnect').addEventListener('click', () => {
-      fetch(apiUrl('/api/camera/disconnect'), { method: 'POST' })
-        .then(r => r.json())
-        .then(() => {
-          isCameraConnected = false;
-          if (cameraPollTimer) clearInterval(cameraPollTimer);
-          document.getElementById('btn-cam-connect').disabled = false;
-          document.getElementById('btn-cam-disconnect').disabled = true;
-
-          document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
-          document.getElementById('cam-status-msg').innerText = "Camera Disconnected";
-
-          document.getElementById('cam-feed-img').style.display = 'none';
-          document.getElementById('cam-feed-img').src = '';
-          document.getElementById('cam-offline-ui').style.display = 'flex';
-          document.getElementById('cam-hud-overlay').style.display = 'none';
-          document.getElementById('cam-live-dot').style.display = 'none';
-          document.getElementById('cam-live-text').innerText = "Standby";
-          document.getElementById('cam-sum-fps').innerText = "0.0 FPS";
-          appendLog("Camera disconnected.", "warn");
-        });
+      setCameraDisconnectedUI();
+      // Also notify bridge if bridge was in use
+      fetch(apiUrl('/api/camera/disconnect'), { method: 'POST' }).catch(() => {});
+      appendLog("Camera disconnected.", "warn");
     });
 
     function pollCameraStatus() {
-      if (!isCameraConnected) return;
+      if (!isCameraConnected || activeMediaStream) return;
       fetch(apiUrl('/api/camera/status'))
         .then(r => r.json())
         .then(data => {
@@ -2969,12 +3116,30 @@ Loading calibration...
         .catch(()=>{});
     }
 
-    // Snapshot Download
+    // Snapshot Download (Supports both Canvas grab from native video AND bridge API)
     document.getElementById('btn-cam-snapshot').addEventListener('click', () => {
       if (!isCameraConnected) {
         alert("Please connect a camera before capturing snapshots.");
         return;
       }
+      const feedVideo = document.getElementById('cam-feed-video');
+      if (activeMediaStream && feedVideo && feedVideo.videoWidth) {
+        const canvas = document.getElementById('cam-feed-canvas');
+        canvas.width = feedVideo.videoWidth;
+        canvas.height = feedVideo.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(feedVideo, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `snapshot_${activeStreamMode}_${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        appendLog(`Captured snapshot from camera (${canvas.width}x${canvas.height}).`);
+        return;
+      }
+
       const link = document.createElement('a');
       link.href = apiUrl(`/api/camera/snapshot?mode=${activeStreamMode}&t=${Date.now()}`);
       link.download = `snapshot_${activeStreamMode}_${Date.now()}.jpg`;
@@ -2999,17 +3164,24 @@ Loading calibration...
       }
     });
 
-    // Tuning Sliders
+    // Tuning Sliders: Real-time CSS filter on video element + Bridge API update
     function sendCameraTuning() {
       const b = parseInt(document.getElementById('cam-brightness').value);
       const c = parseInt(document.getElementById('cam-contrast').value);
       document.getElementById('cam-brightness-val').innerText = b;
       document.getElementById('cam-contrast-val').innerText = c;
+
+      const feedVideo = document.getElementById('cam-feed-video');
+      const feedImg = document.getElementById('cam-feed-img');
+      const filterStr = `brightness(${b * 2}%) contrast(${c * 2}%)`;
+      if (feedVideo) feedVideo.style.filter = filterStr;
+      if (feedImg) feedImg.style.filter = filterStr;
+
       fetch(apiUrl('/api/camera/settings'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brightness: b, contrast: c })
-      });
+      }).catch(() => {});
     }
 
     document.getElementById('cam-brightness').addEventListener('input', sendCameraTuning);
