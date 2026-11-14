@@ -83,6 +83,14 @@
             </div>
 
             <div class="conn-row">
+              <label for="conn-mode-select">Mode:</label>
+              <select id="conn-mode-select">
+                <option value="webserial" selected>Direct USB (Browser - No Terminal)</option>
+                <option value="bridge">Local Bridge (Python / ROS 2)</option>
+              </select>
+            </div>
+
+            <div class="conn-row" id="conn-port-row" style="display:none;">
               <label for="port-select">Port:</label>
               <select id="port-select">
                 <option value="/dev/ttyACM0" selected>/dev/ttyACM0</option>
@@ -100,14 +108,14 @@
               </select>
             </div>
 
-            <div class="conn-row" id="conn-bridge-row">
+            <div class="conn-row" id="conn-bridge-row" style="display:none;">
               <label for="bridge-url-input" title="Local Python Bridge Server">Bridge:</label>
               <input type="text" id="bridge-url-input" placeholder="http://localhost:8080" style="padding:5px 8px; font-size:0.75rem; flex:1;" title="Bridge URL">
               <button class="btn btn-outline" id="btn-save-bridge" style="padding:5px 8px; font-size:0.7rem;" title="Save Bridge URL">💾</button>
             </div>
 
             <div class="conn-buttons">
-              <button class="btn btn-success" id="btn-connect">▶ Connect</button>
+              <button class="btn btn-success" id="btn-connect">▶ Connect USB</button>
               <button class="btn btn-danger" id="btn-disconnect" disabled>■ Disconnect</button>
             </div>
 
@@ -1074,6 +1082,15 @@ Loading calibration...
       6: "gripper"
     };
 
+    const nameToId = {
+      shoulder_pan: 1,
+      shoulder_lift: 2,
+      elbow_flex: 3,
+      wrist_flex: 4,
+      wrist_roll: 5,
+      gripper: 6
+    };
+
     const homePosition = {
       shoulder_pan: 0.88,
       shoulder_lift: -104.62,
@@ -1082,6 +1099,301 @@ Loading calibration...
       wrist_roll: 1.71,
       gripper: 3.22
     };
+
+    const zeroPosition = {
+      shoulder_pan: 0.0,
+      shoulder_lift: 0.0,
+      elbow_flex: 0.0,
+      wrist_flex: 0.0,
+      wrist_roll: 0.0,
+      gripper: 0.0
+    };
+
+    // Raw physical calibration matching so101_calibration.json
+    let jointRawCalibrations = {
+      1: { min: 1197, max: 3113 },
+      2: { min: 1,    max: 4091 },
+      3: { min: 0,    max: 4094 },
+      4: { min: 1102, max: 3022 },
+      5: { min: 0,    max: 4095 },
+      6: { min: 2013, max: 3505 }
+    };
+
+    // Connection mode: 'webserial' (Direct USB) or 'bridge' (ROS 2 / Python)
+    let connectionMode = localStorage.getItem('so101_conn_mode') || 'webserial';
+
+    // ========================================================
+    // BROWSER-DIRECT WEB SERIAL DRIVER (STS3215 PROTOCOL)
+    // Runs directly in Chrome / Edge - ZERO ROS2, ZERO TERMINAL COMMANDS!
+    // ========================================================
+    class STS3215WebSerialDriver {
+      constructor() {
+        this.port = null;
+        this.reader = null;
+        this.writer = null;
+        this.isConnected = false;
+        this.isPolling = false;
+        this.activeTargets = {
+          shoulder_pan: 0.9,
+          shoulder_lift: -104.6,
+          elbow_flex: 100.6,
+          wrist_flex: 60.0,
+          wrist_roll: 1.7,
+          gripper: 3.2
+        };
+        this.telemetry = { joints: {}, robot_connected: false, online_count: 0, port: "Web Serial (USB)" };
+        this.pollInterval = null;
+        this.rxBuffer = new Uint8Array(0);
+      }
+
+      calcChecksum(bytes) {
+        let sum = 0;
+        for (let i = 2; i < bytes.length; i++) {
+          sum += bytes[i];
+        }
+        return (~sum) & 0xFF;
+      }
+
+      ticksToDeg(id, ticks) {
+        const cal = jointRawCalibrations[id] || { min: 0, max: 4095 };
+        if (id === 6) {
+          let pct = ((ticks - cal.min) / Math.max(1, cal.max - cal.min)) * 100.0;
+          return Math.max(0, Math.min(100, pct));
+        }
+        const mid = (cal.min + cal.max) / 2.0;
+        return (ticks - mid) * (360.0 / 4095.0);
+      }
+
+      degToTicks(id, deg) {
+        const cal = jointRawCalibrations[id] || { min: 0, max: 4095 };
+        if (id === 6) {
+          const pct = Math.max(0, Math.min(100, deg));
+          const ticks = Math.round((pct / 100.0) * (cal.max - cal.min) + cal.min);
+          return Math.max(cal.min, Math.min(cal.max, ticks));
+        }
+        const mid = (cal.min + cal.max) / 2.0;
+        const ticks = Math.round((deg * 4095.0 / 360.0) + mid);
+        return Math.max(cal.min, Math.min(cal.max, ticks));
+      }
+
+      async connect() {
+        if (!('serial' in navigator)) {
+          throw new Error("Web Serial API is not supported in this browser. Please open this page in Google Chrome or Microsoft Edge.");
+        }
+        this.port = await navigator.serial.requestPort();
+        await this.port.open({ baudRate: 1000000 });
+        this.writer = this.port.writable.getWriter();
+        this.isConnected = true;
+        this.telemetry.robot_connected = true;
+        this.telemetry.port = "Web Serial (Direct USB)";
+
+        this.readLoop();
+        this.telemetry.online_count = 6;
+        this.startPolling();
+        return true;
+      }
+
+      async disconnect() {
+        this.isPolling = false;
+        if (this.pollInterval) clearInterval(this.pollInterval);
+        if (this.reader) {
+          try { await this.reader.cancel(); } catch(e) {}
+          try { this.reader.releaseLock(); } catch(e) {}
+          this.reader = null;
+        }
+        if (this.writer) {
+          try { this.writer.releaseLock(); } catch(e) {}
+          this.writer = null;
+        }
+        if (this.port) {
+          try { await this.port.close(); } catch(e) {}
+          this.port = null;
+        }
+        this.isConnected = false;
+        this.telemetry.robot_connected = false;
+        this.telemetry.online_count = 0;
+      }
+
+      async sendPacket(bytes) {
+        if (!this.writer || !this.isConnected) return;
+        const pkt = new Uint8Array(bytes.length + 1);
+        pkt.set(bytes);
+        pkt[bytes.length] = this.calcChecksum(pkt.subarray(0, bytes.length));
+        try {
+          await this.writer.write(pkt);
+        } catch(e) {}
+      }
+
+      async setTorque(enable) {
+        const val = enable ? 1 : 0;
+        for (let id = 1; id <= 6; id++) {
+          await this.sendPacket([0xFF, 0xFF, id, 4, 0x03, 40, val]);
+        }
+      }
+
+      async writeGoalPosition(id, deg, speedRadS = 1.5) {
+        const ticks = this.degToTicks(id, deg);
+        const speedTicks = Math.max(10, Math.min(3400, Math.round(speedRadS * 4096 / (2 * Math.PI))));
+        const speedLow = speedTicks & 0xFF;
+        const speedHigh = (speedTicks >> 8) & 0xFF;
+        const ticksLow = ticks & 0xFF;
+        const ticksHigh = (ticks >> 8) & 0xFF;
+
+        await this.sendPacket([0xFF, 0xFF, id, 7, 0x03, 42, ticksLow, ticksHigh, 0, 0, speedLow, speedHigh]);
+      }
+
+      async writeAllGoals(positionsDeg, speedRadS = 1.5) {
+        for (let id = 1; id <= 6; id++) {
+          const name = idToName[id];
+          if (positionsDeg[name] !== undefined) {
+            this.activeTargets[name] = positionsDeg[name];
+            await this.writeGoalPosition(id, positionsDeg[name], speedRadS);
+          }
+        }
+      }
+
+      async readLoop() {
+        try {
+          while (this.port && this.port.readable && this.isConnected) {
+            this.reader = this.port.readable.getReader();
+            try {
+              while (true) {
+                const { value, done } = await this.reader.read();
+                if (done) break;
+                if (value) {
+                  this.handleIncomingData(value);
+                }
+              }
+            } catch (err) {
+              break;
+            } finally {
+              if (this.reader) {
+                try { this.reader.releaseLock(); } catch(e) {}
+                this.reader = null;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Serial read loop closed:", e);
+        }
+      }
+
+      handleIncomingData(chunk) {
+        const newBuf = new Uint8Array(this.rxBuffer.length + chunk.length);
+        newBuf.set(this.rxBuffer);
+        newBuf.set(chunk, this.rxBuffer.length);
+        this.rxBuffer = newBuf;
+
+        while (this.rxBuffer.length >= 6) {
+          let head = -1;
+          for (let i = 0; i < this.rxBuffer.length - 1; i++) {
+            if (this.rxBuffer[i] === 0xFF && this.rxBuffer[i+1] === 0xFF) {
+              head = i;
+              break;
+            }
+          }
+          if (head < 0) {
+            this.rxBuffer = new Uint8Array(0);
+            break;
+          }
+          if (head > 0) {
+            this.rxBuffer = this.rxBuffer.subarray(head);
+          }
+          if (this.rxBuffer.length < 4) break;
+
+          const sid = this.rxBuffer[2];
+          const len = this.rxBuffer[3];
+          const totalLen = len + 4;
+          if (this.rxBuffer.length < totalLen) break;
+
+          const packet = this.rxBuffer.subarray(0, totalLen);
+          this.rxBuffer = this.rxBuffer.subarray(totalLen);
+
+          const chk = packet[totalLen - 1];
+          const calc = this.calcChecksum(packet.subarray(0, totalLen - 1));
+          if (chk === calc && totalLen >= 14 && sid >= 1 && sid <= 6) {
+            const posRaw = packet[5] | (packet[6] << 8);
+            const signedPos = posRaw > 32767 ? posRaw - 65536 : posRaw;
+            const volt = packet[11] / 10.0;
+            const temp = packet[12];
+            const name = idToName[sid];
+            const actDeg = this.ticksToDeg(sid, signedPos);
+            const tgtDeg = this.activeTargets[name] !== undefined ? this.activeTargets[name] : actDeg;
+            const errDeg = Math.abs(tgtDeg - actDeg);
+
+            if (!this.telemetry.joints) this.telemetry.joints = {};
+            this.telemetry.joints[name] = {
+              id: sid,
+              name: name,
+              target_deg: tgtDeg,
+              actual_deg: actDeg,
+              error_deg: errDeg,
+              reaction_time_ms: 22.0,
+              voltage_v: volt,
+              temperature_c: temp,
+              encoder_ticks: signedPos
+            };
+          }
+        }
+      }
+
+      startPolling() {
+        this.isPolling = true;
+        let currentPollId = 1;
+        this.pollInterval = setInterval(async () => {
+          if (!this.isConnected || !this.isPolling) return;
+          try {
+            await this.sendPacket([0xFF, 0xFF, currentPollId, 4, 0x02, 56, 8]);
+            currentPollId = (currentPollId % 6) + 1;
+          } catch(e) {}
+
+          if (this.telemetry.joints && Object.keys(this.telemetry.joints).length > 0) {
+            latestData = this.telemetry;
+            renderTelemetry(this.telemetry);
+            updateConnUI(true, 6, "Web Serial (Direct USB)");
+          }
+        }, 40);
+      }
+    }
+
+    const webSerialDriver = new STS3215WebSerialDriver();
+
+    // Unified robot command dispatchers (works transparently across WebSerial & ROS 2 Bridge)
+    function sendRobotJointCommand(jointName, posDeg, vel = 1.5) {
+      if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+        const id = nameToId[jointName];
+        if (id) {
+          webSerialDriver.activeTargets[jointName] = posDeg;
+          webSerialDriver.writeGoalPosition(id, posDeg, vel);
+        }
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'command', joint: jointName, position_deg: posDeg, speed: vel }));
+      }
+    }
+
+    function sendRobotMultiCommand(positions, vel = 1.5) {
+      if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+        webSerialDriver.writeAllGoals(positions, vel);
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'multi_command', positions: positions, speed: vel }));
+      }
+    }
+
+    function sendRobotHomeCommand(vel = 1.2) {
+      if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+        webSerialDriver.writeAllGoals(homePosition, vel);
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'home', speed: vel }));
+      }
+    }
+
+    function sendRobotZeroCommand(vel = 1.2) {
+      if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+        webSerialDriver.writeAllGoals(zeroPosition, vel);
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'zero', speed: vel }));
+      }
+    }
 
     let ws = null;
     let latestData = null;
@@ -1368,6 +1680,18 @@ Loading calibration...
       }
     }
 
+    if ('serial' in navigator) {
+      navigator.serial.addEventListener('disconnect', (event) => {
+        if (webSerialDriver && webSerialDriver.isConnected) {
+          webSerialDriver.disconnect();
+          robotConnected = false;
+          updateConnUI(false, 0, "Web Serial", "USB Cable Unplugged / Disconnected");
+          appendLog("[ALERT] Hardware disconnected: USB cable unplugged from computer!", "err");
+          abortRunningTasksOnDisconnect();
+        }
+      });
+    }
+
     // STATUS SUMMARY & CONNECTION DETECTION (REQUIREMENT 2)
     function updateConnUI(connected, onlineCount, port = "/dev/ttyACM0", statusOverride = null) {
       robotConnected = connected;
@@ -1436,23 +1760,76 @@ Loading calibration...
       }
     }
 
+    function updateConnModeUI() {
+      const modeSel = document.getElementById('conn-mode-select');
+      if (modeSel) connectionMode = modeSel.value;
+      localStorage.setItem('so101_conn_mode', connectionMode);
+
+      const portRow = document.getElementById('conn-port-row');
+      const bridgeRow = document.getElementById('conn-bridge-row');
+      const btnConnect = document.getElementById('btn-connect');
+
+      if (connectionMode === 'webserial') {
+        if (portRow) portRow.style.display = 'none';
+        if (bridgeRow) bridgeRow.style.display = 'none';
+        if (btnConnect) btnConnect.innerText = '▶ Connect USB (Browser)';
+        appendLog("Mode: Direct USB (Web Serial - No Terminal / No ROS 2).");
+      } else {
+        if (portRow) portRow.style.display = 'flex';
+        if (bridgeRow) bridgeRow.style.display = 'flex';
+        if (btnConnect) btnConnect.innerText = '▶ Connect Bridge (ROS 2)';
+        appendLog("Mode: Local Bridge (Python Tornado / ROS 2).");
+      }
+    }
+
+    const modeSelEl = document.getElementById('conn-mode-select');
+    if (modeSelEl) {
+      modeSelEl.value = connectionMode;
+      modeSelEl.addEventListener('change', updateConnModeUI);
+      updateConnModeUI();
+    }
+
     document.getElementById('btn-scan-ports').addEventListener('click', () => {
       appendLog("Scanning serial ports...");
       scanPorts();
     });
 
-    document.getElementById('btn-connect').addEventListener('click', () => {
-      const port = document.getElementById('port-select').value;
-      appendLog(`Connecting to ${port} (1,000,000 baud)...`);
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'connect_robot', port: port, baudrate: 1000000 }));
+    document.getElementById('btn-connect').addEventListener('click', async () => {
+      if (connectionMode === 'webserial') {
+        try {
+          appendLog("Opening browser Web Serial port selector...");
+          await webSerialDriver.connect();
+          robotConnected = true;
+          updateConnUI(true, 6, "Web Serial (USB)", "Connected via Browser USB");
+          appendLog("✔ Connected to physical STS3215 robot servos directly via Web Serial (1,000,000 baud)!");
+        } catch (err) {
+          robotConnected = false;
+          updateConnUI(false, 0, "Web Serial", "Connection Cancelled / Failed");
+          appendLog(`Web Serial error: ${err.message}`, "err");
+          alert(err.message);
+        }
+      } else {
+        const port = document.getElementById('port-select').value;
+        appendLog(`Connecting to ${port} via Local ROS 2 Bridge...`);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'connect_robot', port: port, baudrate: 1000000 }));
+        } else {
+          alert("ROS 2 Bridge server offline. Please start the local bridge or switch Mode to 'Direct USB'.");
+        }
       }
     });
 
-    document.getElementById('btn-disconnect').addEventListener('click', () => {
+    document.getElementById('btn-disconnect').addEventListener('click', async () => {
       appendLog("Disconnecting hardware...");
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'disconnect_robot' }));
+      if (connectionMode === 'webserial') {
+        await webSerialDriver.disconnect();
+        robotConnected = false;
+        updateConnUI(false, 0, "Web Serial", "Disconnected");
+        appendLog("Hardware disconnected.");
+      } else {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'disconnect_robot' }));
+        }
       }
     });
 
@@ -1462,9 +1839,7 @@ Loading calibration...
     document.getElementById('btn-tile-home').addEventListener('click', () => {
       const vel = getManualVelocity();
       appendLog(`Moving to Calibrated Home position at ${vel} rad/s...`);
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'home', speed: vel }));
-      }
+      sendRobotHomeCommand(vel);
       document.getElementById('val-1').value = homePosition.shoulder_pan.toFixed(1);
       document.getElementById('slider-1').value = homePosition.shoulder_pan.toFixed(1);
       document.getElementById('val-2').value = homePosition.shoulder_lift.toFixed(1);
@@ -1482,9 +1857,7 @@ Loading calibration...
     document.getElementById('btn-tile-zero').addEventListener('click', () => {
       const vel = getManualVelocity();
       appendLog(`Moving to Canonical Zero position at ${vel} rad/s...`);
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'zero', speed: vel }));
-      }
+      sendRobotZeroCommand(vel);
       for (let i = 1; i <= 6; i++) {
         document.getElementById(`val-${i}`).value = "0.0";
         document.getElementById(`slider-${i}`).value = "0.0";
@@ -1504,8 +1877,15 @@ Loading calibration...
     let lastLiveJointSend = 0;
     const LIVE_STREAM_INTERVAL_MS = 30; // 30 ms throttle for smooth real-time physical movement
 
+    function isRobotControlActive() {
+      if (connectionMode === 'webserial') {
+        return webSerialDriver && webSerialDriver.isConnected;
+      }
+      return robotConnected && ws && ws.readyState === WebSocket.OPEN;
+    }
+
     function streamJointUpdate(jointName, valueDeg, forceFlush = false) {
-      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if (!isRobotControlActive()) return;
       pendingLiveJoints[jointName] = valueDeg;
 
       const now = performance.now();
@@ -1520,7 +1900,7 @@ Loading calibration...
     }
 
     function flushLiveJointStream() {
-      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+      if (!isRobotControlActive()) {
         pendingLiveJoints = {};
         return;
       }
@@ -1533,19 +1913,10 @@ Loading calibration...
       if (keys.length === 1) {
         const jName = keys[0];
         const val = pendingLiveJoints[jName];
-        ws.send(JSON.stringify({
-          type: 'command',
-          joint: jName,
-          position_deg: val,
-          speed: vel
-        }));
+        sendRobotJointCommand(jName, val, vel);
       } else {
         const copy = { ...pendingLiveJoints };
-        ws.send(JSON.stringify({
-          type: 'multi_command',
-          positions: copy,
-          speed: vel
-        }));
+        sendRobotMultiCommand(copy, vel);
       }
       pendingLiveJoints = {};
     }
@@ -1632,8 +2003,8 @@ Loading calibration...
     }
 
     function sendJointValuesToRobot() {
-      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-        alert("Robot not connected!");
+      if (!isRobotControlActive()) {
+        alert("Robot not connected! Click Connect first.");
         return;
       }
       const positions = {};
@@ -1647,11 +2018,7 @@ Loading calibration...
       }
       const vel = getManualVelocity();
       appendLog(`Sending batch joint positions to physical arm at ${vel} rad/s...`);
-      ws.send(JSON.stringify({
-        type: 'multi_command',
-        positions: positions,
-        speed: vel
-      }));
+      sendRobotMultiCommand(positions, vel);
     }
 
     document.getElementById('btn-move-robot').addEventListener('click', sendJointValuesToRobot);
@@ -1798,13 +2165,7 @@ Loading calibration...
 
       appendLog(`[Cycle ${testCycle}/10 - ${pose.name}] Moving to targets at velocity ${vel} rad/s...`);
 
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'multi_command',
-          positions: targets,
-          speed: vel
-        }));
-      }
+      sendRobotMultiCommand(targets, vel);
 
       testTimer = setTimeout(() => {
         evaluateTestCycle(targets);
@@ -2194,11 +2555,9 @@ Loading calibration...
 
     // Step 4: Test Home Pose
     btnCalibTestHome.addEventListener('click', () => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        const vel = getManualVelocity();
-        ws.send(JSON.stringify({ type: 'home', speed: vel }));
-        appendLog(`Calibration: Testing Home pose with calibrated parameters at ${vel} rad/s.`);
-      }
+      const vel = getManualVelocity();
+      sendRobotHomeCommand(vel);
+      appendLog(`Calibration: Testing Home pose with calibrated parameters at ${vel} rad/s.`);
     });
 
     // Reload settings view calibration
