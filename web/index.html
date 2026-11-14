@@ -1189,6 +1189,14 @@ Loading calibration...
 
         this.readLoop();
         this.telemetry.online_count = 6;
+
+        // CRUCIAL: Enable motor torque and speed on all 6 servos so they can move!
+        await this.setTorque(true);
+        for (let id = 1; id <= 6; id++) {
+          await this.writeSpeed(id, 1.5);
+          await new Promise(r => setTimeout(r, 4));
+        }
+
         this.startPolling();
         return true;
       }
@@ -1228,26 +1236,36 @@ Loading calibration...
         const val = enable ? 1 : 0;
         for (let id = 1; id <= 6; id++) {
           await this.sendPacket([0xFF, 0xFF, id, 4, 0x03, 40, val]);
+          await new Promise(r => setTimeout(r, 4));
         }
+      }
+
+      async writeSpeed(id, speedRadS = 1.5) {
+        const speedTicks = Math.max(10, Math.min(3400, Math.round(speedRadS * 4096 / (2 * Math.PI))));
+        const speedLow = speedTicks & 0xFF;
+        const speedHigh = (speedTicks >> 8) & 0xFF;
+        await this.sendPacket([0xFF, 0xFF, id, 5, 0x03, 46, speedLow, speedHigh]);
       }
 
       async writeGoalPosition(id, deg, speedRadS = 1.5) {
         const ticks = this.degToTicks(id, deg);
-        const speedTicks = Math.max(10, Math.min(3400, Math.round(speedRadS * 4096 / (2 * Math.PI))));
-        const speedLow = speedTicks & 0xFF;
-        const speedHigh = (speedTicks >> 8) & 0xFF;
-        const ticksLow = ticks & 0xFF;
-        const ticksHigh = (ticks >> 8) & 0xFF;
+        let t = Math.round(ticks);
+        if (t < 0) t += 65536;
+        const ticksLow = t & 0xFF;
+        const ticksHigh = (t >> 8) & 0xFF;
 
-        await this.sendPacket([0xFF, 0xFF, id, 7, 0x03, 42, ticksLow, ticksHigh, 0, 0, speedLow, speedHigh]);
+        // Exact STS3215 goal_position command (addr 42, 2 bytes, length = 5)
+        await this.sendPacket([0xFF, 0xFF, id, 5, 0x03, 42, ticksLow, ticksHigh]);
       }
 
       async writeAllGoals(positionsDeg, speedRadS = 1.5) {
+        await this.setTorque(true);
         for (let id = 1; id <= 6; id++) {
           const name = idToName[id];
           if (positionsDeg[name] !== undefined) {
             this.activeTargets[name] = positionsDeg[name];
             await this.writeGoalPosition(id, positionsDeg[name], speedRadS);
+            await new Promise(r => setTimeout(r, 6));
           }
         }
       }
