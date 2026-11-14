@@ -32,7 +32,6 @@ import tornado.web
 import tornado.websocket
 import tornado.gen
 import threading
-import cv2
 import numpy as np
 
 try:
@@ -42,6 +41,7 @@ except ImportError:
     REALSENSE_AVAILABLE = False
 
 from so101_servo_dynamics.so101_driver import SO101Driver, DEFAULT_CALIBRATION
+from so101_servo_dynamics.camera_backend import CameraManager
 
 connected_clients: Set[tornado.websocket.WebSocketHandler] = set()
 latest_telemetry: Dict[str, Any] = {}
@@ -1092,7 +1092,7 @@ class MainHandler(tornado.web.RequestHandler):
     def get(self):
         web_path = get_workspace_dir() / "web" / "index.html"
         if web_path.exists():
-            with open(web_path, "r") as f:
+            with open(web_path, "r", encoding="utf-8") as f:
                 self.write(f.read())
         else:
             self.write("<h1>SO101 Web Interface</h1><p>index.html not found.</p>")
@@ -1317,325 +1317,33 @@ class CalibrateHandler(BaseApiHandler):
 # Supports: Standard UVC USB/V4L2, Intel RealSense (RGB+Depth), Orbbec, ESP32-CAM
 # ==============================================================================
 
-class CameraManager:
-    def __init__(self):
-        self.is_connected = False
-        self.camera_type = "usb"  # "usb", "realsense", "orbbec", "network"
-        self.device_id = "/dev/video0"
-        self.width = 640
-        self.height = 480
-        self.target_fps = 30
-        self.stream_mode = "rgb"  # "rgb", "depth", "side_by_side"
-
-        # Image tuning parameters
-        self.brightness = 50
-        self.contrast = 50
-        self.exposure = 50
-
-        # Video Captures
-        self.cap: Optional[cv2.VideoCapture] = None
-        self.rs_pipeline = None
-        self.rs_config = None
-
-        # Threading & frame caching
-        self.is_running = False
-        self.thread: Optional[threading.Thread] = None
-        self.lock = threading.Lock()
-        self.latest_rgb: Optional[np.ndarray] = None
-        self.latest_depth: Optional[np.ndarray] = None
-        self.has_depth_hardware = False
-
-        # Live performance stats
-        self.actual_fps = 0.0
-        self.frame_count = 0
-        self.fps_start_time = time.time()
-        self.dropped_frames = 0
-
-    def list_devices(self) -> List[Dict[str, Any]]:
-        devices = []
-
-        # 1. Intel RealSense Devices
-        if REALSENSE_AVAILABLE:
-            try:
-                ctx = rs.context()
-                for dev in ctx.query_devices():
-                    name = dev.get_info(rs.camera_info.name)
-                    serial = dev.get_info(rs.camera_info.serial_number)
-                    devices.append({
-                        "id": f"realsense:{serial}",
-                        "name": f"Intel RealSense {name} (S/N: {serial})",
-                        "type": "realsense",
-                        "has_rgb": True,
-                        "has_depth": True,
-                        "default_res": "640x480"
-                    })
-            except Exception:
-                pass
-
-        # 2. Local V4L2 USB / UVC Video Devices
-        video_paths = sorted(glob.glob("/dev/video*"))
-        for p in video_paths:
-            try:
-                idx = int(p.replace("/dev/video", ""))
-                test_cap = cv2.VideoCapture(idx)
-                if test_cap.isOpened():
-                    test_cap.release()
-                    devices.append({
-                        "id": p,
-                        "name": f"USB / UVC Video Camera ({p})",
-                        "type": "usb",
-                        "has_rgb": True,
-                        "has_depth": False,
-                        "default_res": "640x480"
-                    })
-            except Exception:
-                pass
-
-        # 3. Orbbec 3D Camera Option
-        devices.append({
-            "id": "orbbec_3d",
-            "name": "Orbbec 3D / Astra / Femto (UVC / OpenNI)",
-            "type": "orbbec",
-            "has_rgb": True,
-            "has_depth": True,
-            "default_res": "640x480"
-        })
-
-        # 4. Network ESP32-CAM / IP Stream Option
-        devices.append({
-            "id": "network_esp32",
-            "name": "ESP32-CAM / IP Camera (HTTP MJPEG / RTSP)",
-            "type": "network",
-            "has_rgb": True,
-            "has_depth": False,
-            "default_res": "640x480"
-        })
-
-        return devices
-
-    def connect(self, device_id: str, camera_type: str = "usb", width: int = 640, height: int = 480, fps: int = 30, custom_url: Optional[str] = None) -> Dict[str, Any]:
-        self.disconnect()
-        self.device_id = device_id
-        self.camera_type = camera_type
-        self.width = width
-        self.height = height
-        self.target_fps = fps
-        self.has_depth_hardware = False
-
-        try:
-            if camera_type == "realsense" and REALSENSE_AVAILABLE:
-                self.rs_pipeline = rs.pipeline()
-                self.rs_config = rs.config()
-                if ":" in device_id:
-                    serial = device_id.split(":")[1]
-                    self.rs_config.enable_device(serial)
-                self.rs_config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
-                self.rs_config.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
-                self.rs_pipeline.start(self.rs_config)
-                self.has_depth_hardware = True
-                self.is_connected = True
-            elif camera_type == "network":
-                url = custom_url or "http://192.168.4.1/stream"
-                self.cap = cv2.VideoCapture(url)
-                if not self.cap.isOpened():
-                    return {"success": False, "message": f"Could not connect to network stream: {url}"}
-                self.is_connected = True
-            else:
-                idx = 0
-                if device_id.startswith("/dev/video"):
-                    idx = int(device_id.replace("/dev/video", ""))
-                # Try opening with V4L2 first on Linux, fall back to default
-                self.cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
-                if not self.cap or not self.cap.isOpened():
-                    self.cap = cv2.VideoCapture(idx)
-                if not self.cap or not self.cap.isOpened():
-                    return {"success": False, "message": f"Could not open device {device_id}"}
-
-                # Optimize stream parameters
-                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                self.cap.set(cv2.CAP_PROP_FPS, fps)
-                if camera_type == "orbbec":
-                    self.has_depth_hardware = True
-
-                # Read immediate initial frame so cache is ready
-                ret, initial_frame = self.cap.read()
-                if ret and initial_frame is not None:
-                    with self.lock:
-                        self.latest_rgb = initial_frame
-                self.is_connected = True
-
-            self.is_running = True
-            self.thread = threading.Thread(target=self._capture_worker, daemon=True)
-            self.thread.start()
-
-            return {
-                "success": True,
-                "message": f"Connected to {device_id} ({width}x{height} @ {fps} FPS)",
-                "camera_type": camera_type,
-                "has_depth": self.has_depth_hardware
-            }
-        except Exception as e:
-            self.disconnect()
-            return {"success": False, "message": f"Connection failed: {str(e)}"}
-
-    def disconnect(self):
-        self.is_running = False
-        if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=1.0)
-        self.thread = None
-
-        if self.cap:
-            try:
-                self.cap.release()
-            except Exception:
-                pass
-            self.cap = None
-
-        if self.rs_pipeline:
-            try:
-                self.rs_pipeline.stop()
-            except Exception:
-                pass
-            self.rs_pipeline = None
-
-        self.is_connected = False
-        self.latest_rgb = None
-        self.latest_depth = None
-
-    def _capture_worker(self):
-        self.frame_count = 0
-        self.fps_start_time = time.time()
-
-        while self.is_running and self.is_connected:
-            try:
-                if self.rs_pipeline:
-                    frames = self.rs_pipeline.wait_for_frames(timeout_ms=1000)
-                    color_frame = frames.get_color_frame()
-                    depth_frame = frames.get_depth_frame()
-                    if not color_frame:
-                        continue
-                    color_image = np.asanyarray(color_frame.get_data())
-                    with self.lock:
-                        self.latest_rgb = color_image
-                        if depth_frame:
-                            self.latest_depth = np.asanyarray(depth_frame.get_data())
-                elif self.cap and self.cap.isOpened():
-                    ret, frame = self.cap.read()
-                    if not ret or frame is None:
-                        self.dropped_frames += 1
-                        time.sleep(0.01)
-                        continue
-                    with self.lock:
-                        self.latest_rgb = frame
-                else:
-                    break
-
-                self.frame_count += 1
-                now = time.time()
-                dt = now - self.fps_start_time
-                if dt >= 1.0:
-                    self.actual_fps = round(self.frame_count / dt, 1)
-                    self.frame_count = 0
-                    self.fps_start_time = now
-
-                time.sleep(1.0 / (self.target_fps * 1.5))
-            except Exception:
-                time.sleep(0.05)
-
-    def get_jpeg_frame(self, mode: str = "rgb") -> Optional[bytes]:
-        with self.lock:
-            if self.latest_rgb is None:
-                return None
-            frame = self.latest_rgb.copy()
-            depth = self.latest_depth.copy() if self.latest_depth is not None else None
-
-        # Apply user brightness / contrast
-        if self.brightness != 50 or self.contrast != 50:
-            alpha = (self.contrast / 50.0)
-            beta = (self.brightness - 50) * 1.5
-            frame = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
-
-        h, w = frame.shape[:2]
-
-        if mode == "depth":
-            if depth is not None:
-                depth_norm = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-                out_frame = cv2.applyColorMap(depth_norm, cv2.COLORMAP_JET)
-            else:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                out_frame = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
-                cv2.putText(out_frame, "[Synthetic Depth - Metric requires RealSense/Depth Sensor]", (14, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
-        elif mode == "side_by_side":
-            half_w = max(160, w // 2)
-            half_h = max(120, h // 2)
-            rgb_small = cv2.resize(frame, (half_w, half_h))
-            if depth is not None:
-                depth_norm = cv2.normalize(depth, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-                depth_vis = cv2.applyColorMap(depth_norm, cv2.COLORMAP_JET)
-            else:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                depth_vis = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
-                cv2.putText(depth_vis, "Simulated Depth", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-            depth_small = cv2.resize(depth_vis, (half_w, half_h))
-
-            cv2.putText(rgb_small, "RGB STREAM", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            cv2.putText(depth_small, "DEPTH STREAM", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 2)
-            out_frame = np.hstack([rgb_small, depth_small])
-        else:
-            out_frame = frame
-
-        ret, buf = cv2.imencode(".jpg", out_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-        return buf.tobytes() if ret else None
-
-    def get_placeholder_jpeg(self, text: str = "Camera Standby") -> Optional[bytes]:
-        img = np.zeros((480, 640, 3), dtype=np.uint8)
-        img[:] = (12, 17, 30)
-        cv2.putText(img, text, (150, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (200, 220, 255), 2)
-        ret, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-        return buf.tobytes() if ret else None
-
-    def get_status(self) -> Dict[str, Any]:
-        return {
-            "connected": self.is_connected,
-            "camera_type": self.camera_type,
-            "device_id": self.device_id,
-            "width": self.width,
-            "height": self.height,
-            "target_fps": self.target_fps,
-            "actual_fps": self.actual_fps,
-            "has_depth": self.has_depth_hardware,
-            "stream_mode": self.stream_mode,
-            "dropped_frames": self.dropped_frames,
-            "brightness": self.brightness,
-            "contrast": self.contrast,
-            "exposure": self.exposure
-        }
-
-
+# CameraManager now lives in camera_backend.py (shared with bridge_standalone.py)
 camera_manager = CameraManager()
 
 
 class CameraDevicesHandler(BaseApiHandler):
-    def get(self):
-        devices = camera_manager.list_devices()
+    async def get(self):
+        force = self.get_argument("refresh", "0") == "1"
+        loop = tornado.ioloop.IOLoop.current()
+        devices = await loop.run_in_executor(None, camera_manager.list_devices, force)
         self.set_header("Content-Type", "application/json")
-        self.write(json.dumps({"success": True, "devices": devices}))
+        self.write(json.dumps({"success": True, "devices": devices,
+                               "diagnostics": camera_manager.diagnostics()}))
 
 
 class CameraConnectHandler(BaseApiHandler):
-    def post(self):
+    async def post(self):
         try:
             data = json.loads(self.request.body)
-            dev_id = data.get("device_id", "/dev/video0")
+            dev_id = str(data.get("device_id", "0"))
             cam_type = data.get("camera_type", "usb")
             width = int(data.get("width", 640))
             height = int(data.get("height", 480))
             fps = int(data.get("fps", 30))
             custom_url = data.get("custom_url")
-            res = camera_manager.connect(dev_id, cam_type, width, height, fps, custom_url)
+            loop = tornado.ioloop.IOLoop.current()
+            res = await loop.run_in_executor(
+                None, lambda: camera_manager.connect(dev_id, cam_type, width, height, fps, custom_url))
             self.set_header("Content-Type", "application/json")
             self.write(json.dumps(res))
         except Exception as e:
@@ -1644,8 +1352,8 @@ class CameraConnectHandler(BaseApiHandler):
 
 
 class CameraDisconnectHandler(BaseApiHandler):
-    def post(self):
-        camera_manager.disconnect()
+    async def post(self):
+        await tornado.ioloop.IOLoop.current().run_in_executor(None, camera_manager.disconnect)
         self.set_header("Content-Type", "application/json")
         self.write(json.dumps({"success": True, "message": "Camera disconnected."}))
 

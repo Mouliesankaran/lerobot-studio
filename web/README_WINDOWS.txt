@@ -1,26 +1,23 @@
-================================================================================
-SO-101 ROBOTICS CONTROL STUDIO - WINDOWS STANDALONE BRIDGE
-================================================================================
+SO-101 ROBOTICS CONTROL STUDIO - STANDALONE BRIDGE (Windows / Linux)
+=====================================================================
+WINDOWS
+ 1. Install Python 3.10-3.12 from python.org (keep "py launcher" / "Add to PATH" ticked).
+ 2. Unzip this folder anywhere. Double-click run_windows.bat
+    - first run creates a private .venv and installs pyserial, tornado, opencv-python, numpy
+    - for Intel RealSense depth:  run_windows.bat --with-realsense
+    - for Orbbec depth (experimental): run_windows.bat --with-orbbec
+ 3. Browser opens http://localhost:8080  (use Chrome or Edge).
+ 4. Arm not found? Install the CH340/CH343 (or CP210x) USB-serial driver, re-plug, press Connect Robot.
+ 5. Camera not found? Close Zoom/Teams/other browser tabs using it; Settings > Privacy > Camera must allow
+    desktop apps.  RealSense needs a USB 3 port + cable.
 
-HOW TO RUN ON WINDOWS:
-1. Make sure Python 3.10+ is installed (https://www.python.org/downloads/)
-   * Check "Add Python to PATH" during installation.
-2. Double-click "run_windows.bat".
-3. That's it! The launcher will automatically:
-   - Check and install required packages (pyserial, tornado).
-   - Auto-detect your robot's COM port (CH340 / CP2102).
-   - Launch the local bridge server on http://localhost:8080.
-   - Automatically open the Robotics Studio dashboard in your browser.
+LINUX (Ubuntu, Debian, Mint, Fedora, Arch ...)
+    chmod +x run_linux.sh && ./run_linux.sh          (add --with-realsense / --with-orbbec if needed)
+    One-time permissions:  sudo usermod -aG dialout,video,plugdev $USER   (Arch: uucp instead of dialout)
+    then log out and in.  RealSense/Orbbec also need their udev rules (see CROSS_PLATFORM_REPORT.md).
 
-In the web interface:
-- Connection Mode: Keep set to "Local Bridge".
-- Click "▶ Connect Robot".
-- Full 6-DOF physical arm control, live telemetry, and webcam vision are active!
+SELF-TEST (bridge running):   python tests/camera_acceptance.py      (needs the repo tests/ folder)
+DIAGNOSTICS:                  http://localhost:8080/api/system/info
 
-FILES INCLUDED:
-- run_windows.bat        : 1-click Windows launcher
-- bridge_standalone.py   : Pure Python STS3215 hardware bridge (zero ROS 2 required)
-- home_position.txt      : Calibrated default home pose
-- zero_position.txt      : Canonical reference zero pose
-- so101_calibration.json : Hardware limits and homing tick offsets
-================================================================================
+FILES: bridge_standalone.py + camera_backend.py (server) | index.html, styles.css (UI) |
+       requirements-bridge.txt | home/zero_position.txt, so101_calibration.json

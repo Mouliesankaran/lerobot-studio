@@ -2,7 +2,7 @@
 Sign-agnostic, no self-collision.
 
 shoulder_pan.pos: -3.34
-shoulder_lift.pos: -9.05
+shoulder_lift.pos: -14.00
 elbow_flex.pos: 11.16
 wrist_flex.pos: 11.08
 wrist_roll.pos: 175.78
