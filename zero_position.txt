@@ -1,0 +1,9 @@
+# SO-101 canonical neutral upright pose
+Sign-agnostic, no self-collision.
+
+shoulder_pan.pos: -3.34
+shoulder_lift.pos: -9.05
+elbow_flex.pos: 11.16
+wrist_flex.pos: 11.08
+wrist_roll.pos: 175.78
+gripper.pos: 0.00

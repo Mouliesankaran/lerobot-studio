@@ -1,0 +1,10 @@
+# SO-101 Real Follower Arm Calibrated Home Position
+# Recorded on: 2026-11-12 16:51:32
+# Format: joint_name.pos: angle_in_degrees (or 0-100 for gripper)
+
+shoulder_pan.pos: -9.05
+shoulder_lift.pos: -107.16
+elbow_flex.pos: 98.37
+wrist_flex.pos: 72.70
+wrist_roll.pos: 175.78
+gripper.pos: 0.00

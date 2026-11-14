@@ -1,0 +1,2584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SO-100 / SO-101 Robotic Arm Control &amp; Calibration</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <img src="logo.png" alt="Logo" onerror="this.style.display='none'; document.getElementById('logo-fb').style.display='flex';">
+      <div id="logo-fb" class="sidebar-logo-fallback" style="display:none;">🤖</div>
+      <span>SO-101</span>
+    </div>
+
+    <nav class="nav-items">
+      <button class="nav-btn active" data-page="control">
+        <span class="icon">🎮</span>
+        <span>Control</span>
+      </button>
+      <button class="nav-btn" data-page="monitoring">
+        <span class="icon">📊</span>
+        <span>Monitor</span>
+      </button>
+      <button class="nav-btn" data-page="calibrate">
+        <span class="icon">📐</span>
+        <span>Calibrate</span>
+      </button>
+      <button class="nav-btn" data-page="camera">
+        <span class="icon">📷</span>
+        <span>Camera</span>
+      </button>
+      <button class="nav-btn" data-page="settings">
+        <span class="icon">⚙️</span>
+        <span>Settings</span>
+      </button>
+      <button class="nav-btn" data-page="about">
+        <span class="icon">ℹ️</span>
+        <span>About</span>
+      </button>
+    </nav>
+  </aside>
+
+  <!-- MAIN WRAPPER -->
+  <div class="main-wrapper">
+
+    <!-- TOP HEADER -->
+    <header class="top-header">
+      <div class="header-titles">
+        <h1 id="top-header-title">SO-100 / SO-101 Robotic Arm Control</h1>
+        <p id="top-header-sub">ROS 2 Humble • Feetech STS3215 6-DOF Serial Bus • LeRobot Ecosystem</p>
+      </div>
+
+      <div class="header-right">
+        <div class="system-ready-pill" id="system-ready-pill">
+          <span class="status-dot-pulse" id="system-dot"></span>
+          <span id="system-status-text">System Ready</span>
+        </div>
+        <span class="wifi-icon" id="wifi-icon-badge" title="ROS 2 Bridge Connected">📶</span>
+      </div>
+    </header>
+
+    <!-- CONTENT BODY CONTAINER WITH SPA PAGE SWITCHING (REQUIREMENT 4) -->
+    <main class="content-body">
+
+      <!-- ========================================================
+           PAGE 1: CONTROL DASHBOARD
+           ======================================================== -->
+      <section class="page-view active" id="page-control">
+
+        <!-- ROW 1: CONNECTION | QUICK ACTIONS | ROBOT PREVIEW | STATUS -->
+        <div class="row-1-grid">
+
+          <!-- CARD 1: CONNECTION -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">🔗</span> Connection
+              </div>
+            </div>
+
+            <div class="conn-row">
+              <label for="port-select">Port:</label>
+              <select id="port-select">
+                <option value="/dev/ttyACM0" selected>/dev/ttyACM0</option>
+                <option value="/dev/ttyACM1">/dev/ttyACM1</option>
+                <option value="/dev/ttyUSB0">/dev/ttyUSB0</option>
+              </select>
+              <button class="btn btn-outline" id="btn-scan-ports" style="padding: 7px 9px;" title="Scan Available Serial Ports">🔄</button>
+            </div>
+
+            <div class="conn-row">
+              <label for="robot-model-select">Robot:</label>
+              <select id="robot-model-select">
+                <option value="so101" selected>SO-101 (Follower)</option>
+                <option value="so100">SO-100</option>
+              </select>
+            </div>
+
+            <div class="conn-row" id="conn-bridge-row">
+              <label for="bridge-url-input" title="Local Python Bridge Server">Bridge:</label>
+              <input type="text" id="bridge-url-input" placeholder="http://localhost:8080" style="padding:5px 8px; font-size:0.75rem; flex:1;" title="Bridge URL">
+              <button class="btn btn-outline" id="btn-save-bridge" style="padding:5px 8px; font-size:0.7rem;" title="Save Bridge URL">💾</button>
+            </div>
+
+            <div class="conn-buttons">
+              <button class="btn btn-success" id="btn-connect">▶ Connect</button>
+              <button class="btn btn-danger" id="btn-disconnect" disabled>■ Disconnect</button>
+            </div>
+
+            <div class="conn-status-indicator" id="conn-status-badge">
+              <span class="dot"></span>
+              <span id="conn-status-msg">Ready to connect</span>
+            </div>
+          </div>
+
+          <!-- CARD 2: QUICK ACTIONS -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">⚡</span> Quick Actions
+              </div>
+            </div>
+
+            <div class="quick-tiles-grid">
+              <button class="quick-tile blue" id="btn-tile-home">
+                <span style="font-size:1.4rem;">🏠</span>
+                <span class="title">Home</span>
+                <span class="sub">(Default Pose)</span>
+              </button>
+
+              <button class="quick-tile purple" id="btn-tile-zero">
+                <span style="font-size:1.4rem;">🎯</span>
+                <span class="title">Zero Position</span>
+                <span class="sub">(Calibrate)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- CARD 3: ROBOT PREVIEW -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">🧊</span> Robot Preview
+              </div>
+            </div>
+
+            <div class="robot-preview-box">
+              <img src="robot_preview.png" alt="SO-101 Robot Arm" onerror="this.src='logo.png';">
+            </div>
+          </div>
+
+          <!-- CARD 4: STATUS SUMMARY -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">ℹ️</span> Status Summary
+              </div>
+            </div>
+
+            <div class="summary-list">
+              <div class="summary-item">
+                <span class="key">Robot Model</span>
+                <span class="val" id="sum-model">: SO-101 (STS3215 6-DOF)</span>
+              </div>
+              <div class="summary-item">
+                <span class="key">Active Port</span>
+                <span class="val" id="sum-port">: /dev/ttyACM0</span>
+              </div>
+              <div class="summary-item">
+                <span class="key">Connection</span>
+                <span class="val" id="sum-conn" style="color:var(--success-green); font-weight:700;">: ● Connected</span>
+              </div>
+              <div class="summary-item">
+                <span class="key">Bus Voltage</span>
+                <span class="val" id="sum-volt">: 5.0 V</span>
+              </div>
+              <div class="summary-item">
+                <span class="key">Uptime</span>
+                <span class="val" id="sum-uptime">: 00:00:00</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ROW 2: JOINT CONTROLS (LIVE DYNAMIC) | REAL-TIME MONITOR -->
+        <div class="row-2-grid">
+
+          <!-- CARD 1: JOINT CONTROLS (LIVE DYNAMIC STREAMING) -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">🎛️</span> Joint Controls
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--cyan-accent); font-weight:700;">
+                <span class="status-dot-pulse" style="background:var(--cyan-accent); box-shadow:0 0 8px var(--cyan-accent);"></span> Live Dynamic Control
+              </div>
+            </div>
+
+            <!-- MANUAL VELOCITY INPUT FIELD -->
+            <div class="velocity-control-row">
+              <label for="manual-velocity-input">⚡ Movement Velocity:</label>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <input type="number" class="velocity-input-field" id="manual-velocity-input" min="0.1" max="5.0" step="0.1" value="1.5">
+                <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;">rad/s</span>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px; font-size:0.72rem; color:var(--cyan-accent); background:rgba(56, 189, 248, 0.08); padding:5px 8px; border-radius:6px; border:1px solid rgba(56, 189, 248, 0.2);">
+              <span>💡 <strong>Live Motion:</strong> Drag any slider or scroll mouse wheel over it to move the physical robot arm live in real-time.</span>
+            </div>
+
+            <!-- JOINT ROWS WITH STRICT CSS GRID -->
+            <div class="joint-rows-container">
+              <!-- J1: Shoulder Pan -->
+              <div class="joint-row" id="row-joint-1">
+                <span class="joint-name">Shoulder Pan</span>
+                <span class="joint-range">(-84.1° ~ 84.1°)</span>
+                <input type="range" class="joint-slider" id="slider-1" min="-84.1" max="84.1" step="0.5" value="0.9" title="Scroll mouse wheel or drag to move live">
+                <input type="number" class="joint-val-input" id="val-1" value="0.9" step="0.5" min="-84.1" max="84.1">
+                <span class="joint-unit">°</span>
+              </div>
+
+              <!-- J2: Shoulder Lift -->
+              <div class="joint-row" id="row-joint-2">
+                <span class="joint-name">Shoulder Lift</span>
+                <span class="joint-range">(-120° ~ 90°)</span>
+                <input type="range" class="joint-slider" id="slider-2" min="-120" max="90" step="0.5" value="-104.6" title="Scroll mouse wheel or drag to move live">
+                <input type="number" class="joint-val-input" id="val-2" value="-104.6" step="0.5" min="-120" max="90">
+                <span class="joint-unit">°</span>
+              </div>
+
+              <!-- J3: Elbow Flex -->
+              <div class="joint-row" id="row-joint-3">
+                <span class="joint-name">Elbow Flex</span>
+                <span class="joint-range">(-110° ~ 110°)</span>
+                <input type="range" class="joint-slider" id="slider-3" min="-110" max="110" step="0.5" value="100.6" title="Scroll mouse wheel or drag to move live">
+                <input type="number" class="joint-val-input" id="val-3" value="100.6" step="0.5" min="-110" max="110">
+                <span class="joint-unit">°</span>
+              </div>
+
+              <!-- J4: Wrist Flex -->
+              <div class="joint-row" id="row-joint-4">
+                <span class="joint-name">Wrist Flex</span>
+                <span class="joint-range">(-84.3° ~ 84.3°)</span>
+                <input type="range" class="joint-slider" id="slider-4" min="-84.3" max="84.3" step="0.5" value="60.0" title="Scroll mouse wheel or drag to move live">
+                <input type="number" class="joint-val-input" id="val-4" value="60.0" step="0.5" min="-84.3" max="84.3">
+                <span class="joint-unit">°</span>
+              </div>
+
+              <!-- J5: Wrist Roll -->
+              <div class="joint-row" id="row-joint-5">
+                <span class="joint-name">Wrist Roll</span>
+                <span class="joint-range">(-150° ~ 150°)</span>
+                <input type="range" class="joint-slider" id="slider-5" min="-150" max="150" step="0.5" value="1.7" title="Scroll mouse wheel or drag to move live">
+                <input type="number" class="joint-val-input" id="val-5" value="1.7" step="0.5" min="-150" max="150">
+                <span class="joint-unit">°</span>
+              </div>
+
+              <!-- J6: Gripper -->
+              <div class="joint-row" id="row-joint-6">
+                <span class="joint-name">Gripper</span>
+                <span class="joint-range">(0% ~ 100%)</span>
+                <input type="range" class="joint-slider" id="slider-6" min="0" max="100" step="1" value="3" title="Scroll mouse wheel or drag to move live">
+                <input type="number" class="joint-val-input" id="val-6" value="3.2" step="1" min="0" max="100">
+                <span class="joint-unit">%</span>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" id="btn-move-robot" style="width:100%; padding:9px;">
+              ▶ Move Robot (Batch Sync)
+            </button>
+          </div>
+
+          <!-- CARD 2: REAL-TIME MONITORING (DEGREE UNITS) -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">📈</span> Real-Time Monitoring
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--success-green); font-weight:700;">
+                <span class="status-dot-pulse"></span> Live
+              </div>
+            </div>
+
+            <table class="monitoring-table">
+              <thead>
+                <tr>
+                  <th>Joint</th>
+                  <th>Target (°)</th>
+                  <th>Actual (°)</th>
+                  <th>Error (°)</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="telemetry-rows">
+                <tr id="row-shoulder_pan">
+                  <td><strong>Shoulder Pan</strong></td>
+                  <td class="col-target">0.9°</td>
+                  <td class="col-actual">0.9°</td>
+                  <td class="col-error">0.0°</td>
+                  <td><span class="status-badge-ok">✔ Reached</span></td>
+                </tr>
+                <tr id="row-shoulder_lift">
+                  <td><strong>Shoulder Lift</strong></td>
+                  <td class="col-target">-104.6°</td>
+                  <td class="col-actual">-104.6°</td>
+                  <td class="col-error">0.0°</td>
+                  <td><span class="status-badge-ok">✔ Reached</span></td>
+                </tr>
+                <tr id="row-elbow_flex">
+                  <td><strong>Elbow Flex</strong></td>
+                  <td class="col-target">100.6°</td>
+                  <td class="col-actual">100.6°</td>
+                  <td class="col-error">0.0°</td>
+                  <td><span class="status-badge-ok">✔ Reached</span></td>
+                </tr>
+                <tr id="row-wrist_flex">
+                  <td><strong>Wrist Flex</strong></td>
+                  <td class="col-target">60.0°</td>
+                  <td class="col-actual">60.0°</td>
+                  <td class="col-error">0.0°</td>
+                  <td><span class="status-badge-ok">✔ Reached</span></td>
+                </tr>
+                <tr id="row-wrist_roll">
+                  <td><strong>Wrist Roll</strong></td>
+                  <td class="col-target">1.7°</td>
+                  <td class="col-actual">1.7°</td>
+                  <td class="col-error">0.0°</td>
+                  <td><span class="status-badge-ok">✔ Reached</span></td>
+                </tr>
+                <tr id="row-gripper">
+                  <td><strong>Gripper</strong></td>
+                  <td class="col-target">3.2%</td>
+                  <td class="col-actual">3.2%</td>
+                  <td class="col-error">0.0%</td>
+                  <td><span class="status-badge-ok">✔ Reached</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+        <!-- ROW 3: RANDOM TARGET TEST | STATUS LOGS | RECORDING & PLAYBACK -->
+        <div class="row-3-grid">
+
+          <!-- CARD 1: RANDOM TARGET DYNAMICS TESTING (WAYPOINTS REMOVED - REQ 3) -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">🎯</span> Random Target Dynamics Testing
+              </div>
+            </div>
+
+            <p class="test-desc">
+              10 height-distributed dynamics testing cycles with comprehensive step response evaluation.
+            </p>
+
+            <div class="test-btn-row">
+              <button class="btn btn-primary" id="btn-start-test">➕ Start Test</button>
+              <button class="btn btn-warning" id="btn-stop-test" disabled>🛑 Stop Test</button>
+              <button class="btn btn-purple" id="btn-view-results">📊 View Results</button>
+            </div>
+
+            <div class="progress-bar-wrap">
+              <div class="progress-labels">
+                <span>Test Progress</span>
+                <span id="test-progress-pct">0%</span>
+              </div>
+              <div class="progress-track">
+                <div class="progress-fill" id="test-progress-bar"></div>
+              </div>
+            </div>
+
+            <div class="metric-tiles-row">
+              <div class="metric-tile">
+                <div class="lbl">Target Poses</div>
+                <div class="val" id="metric-poses">0</div>
+              </div>
+              <div class="metric-tile">
+                <div class="lbl">Success Rate</div>
+                <div class="val" id="metric-success">0.0%</div>
+              </div>
+              <div class="metric-tile">
+                <div class="lbl">Avg Error</div>
+                <div class="val" id="metric-error">0.0°</div>
+              </div>
+              <div class="metric-tile">
+                <div class="lbl">Avg Time</div>
+                <div class="val" id="metric-time">0.0 ms</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD 2: STATUS LOGS -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">📄</span> Status Logs
+              </div>
+              <button class="btn btn-outline" id="btn-clear-logs" style="padding: 3px 8px; font-size: 0.72rem;">Clear</button>
+            </div>
+
+            <div class="log-box" id="log-box-container">
+              <div class="log-line">
+                <span class="log-bullet"></span>
+                <span class="log-time" id="log-t1">--:--:--</span>
+                <span>Hardware bridge node initialized.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD 3: MOVEMENT & RECORDING + DATASET PLAYBACK -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon" style="color:var(--danger-red);">🔴</span> Movement &amp; Recording
+              </div>
+            </div>
+
+            <div class="record-btn-row">
+              <button class="btn btn-danger" id="btn-rec-start" title="Disable torque & move arm freely by hand">⏺ Start Recording</button>
+              <button class="btn btn-warning" id="btn-rec-stop" disabled>⏹ Stop</button>
+              <button class="btn btn-success" id="btn-rec-save">💾 Save</button>
+            </div>
+
+            <div class="rec-status-line">
+              <span>Status:</span>
+              <span id="rec-status-text" style="color:#fff; font-weight:600;">Not Recording</span>
+            </div>
+
+            <div class="dataset-select-row">
+              <label for="dataset-select">Select Dataset:</label>
+              <select id="dataset-select">
+                <option value="">Loading datasets...</option>
+              </select>
+            </div>
+
+            <div class="dataset-actions-row">
+              <button class="btn btn-primary" id="btn-load-dataset">📂 Load</button>
+              <button class="btn btn-outline" id="btn-download-dataset">⬇ Download CSV</button>
+            </div>
+
+            <!-- DATASET PLAYBACK CONTROLS -->
+            <div class="playback-box">
+              <div class="playback-info-line">
+                <span>Loaded Dataset:</span>
+                <span class="val" id="loaded-dataset-name">None</span>
+              </div>
+              <div class="playback-info-line">
+                <span>Trajectory:</span>
+                <span class="val" id="loaded-dataset-meta">--</span>
+              </div>
+
+              <div class="playback-btn-row">
+                <button class="btn btn-success" id="btn-play-dataset" disabled>▶ Run / Play</button>
+                <button class="btn btn-danger" id="btn-stop-playback" disabled>⏹ Stop Play</button>
+              </div>
+
+              <div class="progress-bar-wrap" style="margin-top:4px; margin-bottom:0;">
+                <div class="progress-labels">
+                  <span id="playback-status-text">Playback: Idle</span>
+                  <span id="playback-pct-text">0%</span>
+                </div>
+                <div class="progress-track">
+                  <div class="progress-fill" id="playback-progress-bar" style="background:var(--success-green);"></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ========================================================
+           PAGE 2: CALIBRATE (OFFICIAL LEROBOT SO-101 WORKFLOW - REQ 5)
+           ======================================================== -->
+      <section class="page-view" id="page-calibrate">
+
+        <div class="calib-step-card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <h2 style="font-size:1.15rem; color:#fff;">📐 LeRobot SO-101 Calibration</h2>
+              <p style="font-size:0.78rem; color:var(--text-muted); margin-top:2px;">
+                Official calibration procedure referenced from <a href="https://huggingface.co/docs/lerobot/en/so101" target="_blank" style="color:var(--cyan-accent); text-decoration:none;">huggingface.co/docs/lerobot/en/so101</a>.
+              </p>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="btn btn-outline" id="btn-calib-reload">🔄 Reload Current Calibration</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 1: HOMING POSITION (MIDDLE OF RANGE OF MOTION) -->
+        <div class="calib-step-card">
+          <div class="calib-step-header">
+            <span class="step-badge">1</span>
+            <div class="step-title">Step 1: Set Homing Position (Middle of Range of Motion)</div>
+          </div>
+
+          <p style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;">
+            Hold the arm in the middle of its range of motion where upper arm is vertical, forearm is horizontal, and gripper is pointing forward. Torque must be turned OFF so you can freely position the arm by hand.
+          </p>
+
+          <pre class="diagram-pre">
+       ╭─────┬────────────────────┬──────╮ ◉╲═════╗   ← moveable claw (half open)
+       │     │      forearm       │  ▤▤  │╤══╲════╝   ← fixed claw
+       ╰┬───┬┴────────────────────┴──────┴┴═══════╝
+        │   │
+        │   │
+        │   │   upper arm (vertical)
+        │   │
+        │   │
+   ╭────┴───┴────╮
+   │   base ◉    │
+   ╰──┬───────┬──╯
+  ╭───┴───────┴───╮
+  │▓▓▓ C-clamp ▓▓▓│
+  ╰───────────────╯
+ ═══════════════════════════════════════════════════
+                table edge
+          </pre>
+
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="btn btn-warning" id="btn-calib-step1-start">🔓 1. Disable Torque &amp; Position Arm</button>
+            <button class="btn btn-primary" id="btn-calib-step1-record" disabled>📸 2. Record Half-Turn Homing Offsets</button>
+            <span id="calib-step1-status" style="font-size:0.78rem; color:var(--cyan-accent); font-weight:600;">Status: Ready for Step 1</span>
+          </div>
+
+          <div id="calib-homing-results-box" style="display:none; background:var(--card-inner); padding:10px; border-radius:8px; border:1px solid var(--border-color); font-size:0.78rem;">
+            <strong>Recorded Homing Raw Ticks &amp; Offsets (Offset = Raw - 2048):</strong>
+            <div id="calib-homing-offsets-list" style="margin-top:6px; font-family:monospace; color:var(--cyan-accent);"></div>
+          </div>
+        </div>
+
+        <!-- STEP 2: RECORD RANGE OF MOTION -->
+        <div class="calib-step-card">
+          <div class="calib-step-header">
+            <span class="step-badge">2</span>
+            <div class="step-title">Step 2: Record Full Ranges of Motion</div>
+          </div>
+
+          <p style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;">
+            Move each joint sequentially through its entire safe range of motion. The system continuously tracks the minimum and maximum encoder positions. <em>(Motor 5: wrist_roll is a full-turn motor spanning 0 to 4095)</em>.
+          </p>
+
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="btn btn-primary" id="btn-calib-step2-start" disabled>⏺ Start Range of Motion Recording</button>
+            <button class="btn btn-danger" id="btn-calib-step2-stop" disabled>⏹ Finish Range Recording</button>
+            <span id="calib-step2-status" style="font-size:0.78rem; color:var(--text-muted);">Awaiting Step 1 completion</span>
+          </div>
+
+          <!-- LIVE RANGE TRACKING TABLE -->
+          <table class="calib-table">
+            <thead>
+              <tr>
+                <th>Joint Name</th>
+                <th>ID</th>
+                <th>Live Encoder Ticks</th>
+                <th>Observed Min</th>
+                <th>Observed Max</th>
+                <th>Motion Range Span</th>
+              </tr>
+            </thead>
+            <tbody id="calib-ranges-tbody">
+              <!-- Dynamically rendered -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- STEP 3: REVIEW & SAVE CALIBRATION -->
+        <div class="calib-step-card">
+          <div class="calib-step-header">
+            <span class="step-badge">3</span>
+            <div class="step-title">Step 3: Review &amp; Apply Calibration File</div>
+          </div>
+
+          <p style="font-size:0.8rem; color:var(--text-muted); line-height:1.4;">
+            Review the generated calibration parameters and save directly to <code>so101_calibration.json</code>. The new calibration will be applied immediately to the active hardware driver.
+          </p>
+
+          <div style="display:flex; gap:10px; align-items:center;">
+            <button class="btn btn-success" id="btn-calib-save" disabled>💾 Save &amp; Apply to so101_calibration.json</button>
+            <button class="btn btn-outline" id="btn-calib-test-home" disabled>🏠 Test Home Pose with New Calibration</button>
+            <span id="calib-save-status" style="font-size:0.78rem; color:var(--success-green); font-weight:600;"></span>
+          </div>
+
+          <pre id="calib-json-preview" style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-family:monospace; font-size:0.74rem; color:#cbd5e1; max-height:220px; overflow-y:auto;">
+Awaiting calibration generation...
+          </pre>
+        </div>
+
+      </section>
+
+      <!-- ========================================================
+           PAGE 3: MONITORING (REAL-TIME TELEMETRY & DIAGNOSTICS)
+           ======================================================== -->
+      <section class="page-view" id="page-monitoring">
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">📊</span> Multi-Joint Real-Time Dynamics Monitoring
+            </div>
+            <div style="font-size:0.78rem; color:var(--success-green); font-weight:700;">
+              ● 30 Hz Live Telemetry Stream
+            </div>
+          </div>
+          <p style="font-size:0.78rem; color:var(--text-muted);">
+            High-precision feedback directly sampled from 6x Feetech STS3215 magnetic encoders. Sub-degree position tracking, round-trip packet latency, and voltage stability.
+          </p>
+        </div>
+
+        <div class="monitor-grid" id="monitor-cards-grid">
+          <!-- 6 Joint Monitoring Cards dynamically rendered -->
+        </div>
+
+      </section>
+
+      <!-- ========================================================
+           PAGE: CAMERA (MULTI-CAMERA VISION & STREAMING STUDIO)
+           ======================================================== -->
+      <section class="page-view" id="page-camera">
+
+        <!-- TOP CONFIG ROW -->
+        <div class="cam-top-grid">
+
+          <!-- CARD 1: CAMERA DEVICE & CONNECTION -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">📷</span> Camera Device Connection
+              </div>
+              <button class="btn btn-outline" id="btn-cam-refresh" style="padding:4px 8px; font-size:0.75rem;" title="Rescan camera devices">
+                🔄 Scan
+              </button>
+            </div>
+
+            <div class="cam-selector-box">
+              <div>
+                <label for="cam-model-select">Camera Technology / Model:</label>
+                <select id="cam-model-select">
+                  <option value="usb">Standard USB / UVC Webcam (V4L2)</option>
+                  <option value="realsense">Intel RealSense (D435 / D415 / D405 / D455)</option>
+                  <option value="orbbec">Orbbec 3D (Femto / Astra / Gemini)</option>
+                  <option value="network">ESP32-CAM / IP Stream (HTTP MJPEG / RTSP)</option>
+                </select>
+              </div>
+
+              <div id="cam-dev-select-wrap">
+                <label for="cam-device-select">Detected Hardware Device:</label>
+                <select id="cam-device-select">
+                  <option value="/dev/video0">/dev/video0 (Default Video Source)</option>
+                </select>
+              </div>
+
+              <div id="cam-url-input-wrap" style="display:none;">
+                <label for="cam-url-input">ESP32-CAM / IP Stream URL:</label>
+                <input type="url" id="cam-url-input" placeholder="http://192.168.4.1/stream" value="http://192.168.4.1/stream">
+              </div>
+
+              <div class="conn-buttons" style="margin-top:4px;">
+                <button class="btn btn-success" id="btn-cam-connect">
+                  ▶ Connect Camera
+                </button>
+                <button class="btn btn-danger" id="btn-cam-disconnect" disabled>
+                  ⏹ Disconnect
+                </button>
+              </div>
+
+              <div class="conn-status-indicator" id="cam-status-indicator">
+                <span class="dot" id="cam-status-dot"></span>
+                <span id="cam-status-msg">Camera Disconnected</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD 2: RESOLUTION, FPS & STREAM MODE -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">⚙️</span> Stream Configuration &amp; Modes
+              </div>
+              <div id="cam-cap-badge" class="cam-badge-tag rgb">RGB Only</div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div>
+                  <label for="cam-res-select">Capture Resolution:</label>
+                  <select id="cam-res-select">
+                    <option value="640x480" selected>640 x 480 (VGA)</option>
+                    <option value="1280x720">1280 x 720 (HD 720p)</option>
+                    <option value="1920x1080">1920 x 1080 (FHD 1080p)</option>
+                    <option value="320x240">320 x 240 (QVGA)</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="cam-fps-select">Frame Rate:</label>
+                  <select id="cam-fps-select">
+                    <option value="30" selected>30 FPS (Standard)</option>
+                    <option value="15">15 FPS (Low Bandwidth)</option>
+                    <option value="60">60 FPS (High Speed)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style="margin-bottom:4px; display:block;">Active Viewer Stream Mode:</label>
+                <div class="stream-mode-selector">
+                  <button class="stream-mode-btn active" id="btn-stream-rgb" data-mode="rgb">
+                    🌈 RGB Color
+                  </button>
+                  <button class="stream-mode-btn" id="btn-stream-depth" data-mode="depth">
+                    📐 Depth Map
+                  </button>
+                  <button class="stream-mode-btn" id="btn-stream-sbs" data-mode="side_by_side">
+                    🪟 RGB + Depth
+                  </button>
+                </div>
+                <div id="depth-mode-hint" style="font-size:0.7rem; color:var(--text-muted); margin-top:4px;">
+                  • Standard USB webcams stream native RGB. RealSense &amp; Orbbec cameras stream calibrated hardware Depth.
+                </div>
+              </div>
+
+              <div style="display:flex; gap:8px; margin-top:2px;">
+                <button class="btn btn-outline" id="btn-cam-snapshot" style="flex:1;">
+                  📸 Capture Snapshot
+                </button>
+                <button class="btn btn-outline" id="btn-cam-crosshair" style="flex:1;">
+                  🎯 Toggle Crosshair
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD 3: IMAGE TUNING & SENSOR INFO -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <span class="icon">🎛️</span> Sensor Tuning &amp; Telemetry
+              </div>
+              <button class="btn btn-outline" id="btn-cam-reset-tuning" style="padding:4px 8px; font-size:0.72rem;">
+                Reset
+              </button>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div class="cam-slider-row">
+                <label for="cam-brightness">Brightness:</label>
+                <input type="range" id="cam-brightness" min="0" max="100" value="50">
+                <span class="cam-slider-val" id="cam-brightness-val">50</span>
+              </div>
+
+              <div class="cam-slider-row">
+                <label for="cam-contrast">Contrast:</label>
+                <input type="range" id="cam-contrast" min="0" max="100" value="50">
+                <span class="cam-slider-val" id="cam-contrast-val">50</span>
+              </div>
+
+              <div class="summary-list" style="margin-top:4px;">
+                <div class="summary-item">
+                  <span class="key">Active Source</span>
+                  <span class="val" id="cam-sum-src">None</span>
+                </div>
+                <div class="summary-item">
+                  <span class="key">Live Stream Rate</span>
+                  <span class="val" id="cam-sum-fps">0.0 FPS</span>
+                </div>
+                <div class="summary-item">
+                  <span class="key">Dropped Frames</span>
+                  <span class="val" id="cam-sum-drops">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ROW 2: LIVE CAMERA VIEWER -->
+        <div class="card cam-viewport-card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">📺</span> Live Camera Stream Viewer
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="cam-live-badge" class="cam-badge-tag rgb">RGB Feed</span>
+              <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--success-green); font-weight:700;">
+                <span class="status-dot-pulse" id="cam-live-dot" style="display:none;"></span>
+                <span id="cam-live-text">Standby</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cam-viewport-wrap" id="cam-viewport-wrap">
+            <!-- Offline Placeholder -->
+            <div class="cam-offline-placeholder" id="cam-offline-ui">
+              <div class="cam-offline-icon">📷</div>
+              <div style="font-size:1.05rem; font-weight:700; color:var(--text-main);">Camera Stream Offline</div>
+              <div style="font-size:0.78rem; max-width:440px; color:var(--text-muted);">
+                Select your camera model (USB, Intel RealSense, Orbbec, or ESP32-CAM) above and click <strong>▶ Connect Camera</strong> to initiate real-time video streaming.
+              </div>
+            </div>
+
+            <!-- Live Video Stream Element -->
+            <img class="cam-feed-img" id="cam-feed-img" src="" alt="Live Video Feed" style="display:none;">
+
+            <!-- HUD Overlay -->
+            <div class="cam-hud-overlay" id="cam-hud-overlay" style="display:none;">
+              <div class="cam-hud-pill">
+                <span class="status-dot-pulse"></span>
+                <span id="hud-fps-text">30.0 FPS</span>
+              </div>
+              <div class="cam-hud-pill">
+                <span id="hud-res-text">640x480</span>
+              </div>
+              <div class="cam-hud-pill">
+                <span id="hud-mode-text">RGB</span>
+              </div>
+            </div>
+
+            <!-- Fullscreen HUD control -->
+            <div class="cam-hud-controls">
+              <button class="cam-hud-btn" id="btn-cam-fullscreen" title="Toggle Fullscreen">⛶</button>
+            </div>
+
+            <!-- Center Crosshair Overlay -->
+            <div class="cam-crosshair" id="cam-crosshair"></div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ========================================================
+           PAGE 4: SETTINGS
+           ======================================================== -->
+      <section class="page-view" id="page-settings">
+
+        <!-- CARD 0: UI APPEARANCE & TYPOGRAPHY CUSTOMIZATION (REQUIREMENT 1) -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">🎨</span> UI Appearance, Theme &amp; Typography Customization
+            </div>
+            <button class="btn btn-outline" id="btn-reset-ui-settings" style="padding:4px 8px; font-size:0.72rem;">
+              Reset to Defaults
+            </button>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:16px;">
+            <!-- Theme Selection -->
+            <div>
+              <label style="margin-bottom:8px; display:block;">Theme Mode:</label>
+              <div class="theme-picker-grid">
+                <div class="theme-card-option active" id="theme-opt-dark" data-theme="dark">
+                  <div class="theme-preview-circle theme-preview-dark">🌙</div>
+                  <div>
+                    <div style="font-weight:700; font-size:0.82rem;">Dark Mode</div>
+                    <div style="font-size:0.68rem; color:var(--text-muted);">(Default High Contrast)</div>
+                  </div>
+                </div>
+                <div class="theme-card-option" id="theme-opt-light" data-theme="light">
+                  <div class="theme-preview-circle theme-preview-light">☀️</div>
+                  <div>
+                    <div style="font-weight:700; font-size:0.82rem;">Light Mode</div>
+                    <div style="font-size:0.68rem; color:var(--text-muted);">(Clean Daylight)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Font Family Selection -->
+            <div>
+              <label for="settings-font-family">Typography / Font Style:</label>
+              <select id="settings-font-family" style="margin-top:4px;">
+                <option value="font-sans" selected>Modern Sans-Serif (System / Inter)</option>
+                <option value="font-roboto">Roboto (Clean &amp; Balanced)</option>
+                <option value="font-tech">Rajdhani / Tech (Futuristic UI)</option>
+                <option value="font-mono">JetBrains Mono (Developer Monospace)</option>
+              </select>
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-top:6px;">
+                Applies immediate typographical styling across all dashboards.
+              </div>
+            </div>
+
+            <!-- Font Size Scaling -->
+            <div>
+              <label for="settings-font-size">Base UI Scale / Font Size:</label>
+              <select id="settings-font-size" style="margin-top:4px;">
+                <option value="font-size-sm">Small (12.5px - Dense View)</option>
+                <option value="font-size-md" selected>Medium (14px - Default Standard)</option>
+                <option value="font-size-lg">Large (15.5px - Comfortable)</option>
+                <option value="font-size-xl">Extra Large (17px - High Readability)</option>
+              </select>
+              <div style="font-size:0.7rem; color:var(--text-muted); margin-top:6px;">
+                Controls proportional layout scaling throughout the web application.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">⚙️</span> Robot Hardware &amp; ROS 2 Bridge Configuration
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <h4 style="font-size:0.85rem; color:#fff;">Hardware Communication</h4>
+              <div>
+                <label>Default Serial Device:</label>
+                <input type="text" id="settings-port-input" value="/dev/ttyACM0" readonly>
+              </div>
+              <div>
+                <label>Baudrate (bps):</label>
+                <input type="text" value="1,000,000 (1 Mbps)" readonly>
+              </div>
+              <div>
+                <label>Protocol:</label>
+                <input type="text" value="Feetech STS3215 Half-Duplex RS-485 / UART" readonly>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <h4 style="font-size:0.85rem; color:#fff;">ROS 2 Middleware Topics</h4>
+              <div>
+                <label>Joint Commands Publisher:</label>
+                <input type="text" value="/so101/joint_commands [sensor_msgs/JointState]" readonly>
+              </div>
+              <div>
+                <label>Joint States Telemetry:</label>
+                <input type="text" value="/so101/joint_states [sensor_msgs/JointState]" readonly>
+              </div>
+              <div>
+                <label for="settings-bridge-url">Local Robot Bridge Host / URL:</label>
+                <div style="display:flex; gap:6px;">
+                  <input type="text" id="settings-bridge-url" placeholder="http://localhost:8080" style="flex:1;">
+                  <button class="btn btn-primary" id="btn-save-settings-bridge" style="padding:6px 12px; font-size:0.75rem;">Save</button>
+                </div>
+                <div style="font-size:0.68rem; color:var(--text-muted); margin-top:4px;">
+                  Point this to your local robot machine when running on Render or LAN (default: http://localhost:8080).
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">📄</span> Active Calibration File (so101_calibration.json)
+            </div>
+          </div>
+          <pre id="settings-calib-view" style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-family:monospace; font-size:0.75rem; color:#cbd5e1; max-height:260px; overflow-y:auto;">
+Loading calibration...
+          </pre>
+        </div>
+
+      </section>
+
+      <!-- ========================================================
+           PAGE 5: ABOUT
+           ======================================================== -->
+      <section class="page-view" id="page-about">
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">ℹ️</span> About SO-101 Robotics Controller
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem; line-height:1.5; color:#cbd5e1;">
+            <p>
+              The <strong>SO-101</strong> (based on the SO-ARM100 open hardware project) is a versatile 6-DOF robotic manipulator arm designed for imitation learning, autonomous manipulation, and teleoperation.
+            </p>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; background:var(--card-inner); padding:12px; border-radius:8px; border:1px solid var(--border-color);">
+              <div>
+                <strong style="color:#fff;">Hardware Specifications:</strong>
+                <ul style="margin-left:18px; margin-top:4px; color:var(--text-muted);">
+                  <li>Degrees of Freedom: 6-DOF (Pan, Lift, Elbow, Wrist Flex, Roll, Gripper)</li>
+                  <li>Actuators: 6x Feetech STS3215 Magnetic Bus Servos</li>
+                  <li>Encoder Resolution: 4096 ticks / 360° (~0.088° per tick)</li>
+                  <li>Bus Baudrate: 1,000,000 bps (1 Mbps)</li>
+                  <li>Operating Voltage: Regulated 5.0V - 7.4V DC</li>
+                </ul>
+              </div>
+              <div>
+                <strong style="color:#fff;">Software Stack:</strong>
+                <ul style="margin-left:18px; margin-top:4px; color:var(--text-muted);">
+                  <li>Middleware: ROS 2 Humble LTS (sensor_msgs/JointState)</li>
+                  <li>Driver: Low-Latency rustypot / STS Serial Bus Interface</li>
+                  <li>Web Server: Tornado Async IOLoop &amp; WebSockets</li>
+                  <li>Ecosystem: LeRobot Imitation Learning &amp; Hugging Face</li>
+                </ul>
+              </div>
+            </div>
+            <p style="font-size:0.76rem; color:var(--text-muted);">
+              Official LeRobot SO-101 Reference: <a href="https://huggingface.co/docs/lerobot/en/so101" target="_blank" style="color:var(--cyan-accent); text-decoration:none;">https://huggingface.co/docs/lerobot/en/so101</a>
+            </p>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- FOOTER BAR -->
+    <footer class="bottom-footer">
+      <div>SO-101 Robotics | ROS 2 Humble • Real-Time Control &amp; Calibration Dashboard</div>
+      <div class="footer-right">
+        <div class="footer-status-pill">
+          <span class="footer-dot" id="footer-dot"></span>
+          <span id="footer-conn-text">Connected</span>
+        </div>
+        <div id="footer-clock">10:24:15 AM</div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- DETAILED ONE-PAGE TXT REPORT MODAL -->
+  <div class="modal-overlay" id="report-modal">
+    <div class="modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="color:#fff; font-size:1.05rem;">📄 SO-101 Dynamics Characterization Report</h3>
+        <button class="btn btn-outline" id="btn-close-modal">✕ Close</button>
+      </div>
+
+      <p style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
+        Detailed characterization and tracking accuracy report. You can review all values directly on this page or download a local copy.
+      </p>
+
+      <div class="report-content-box" id="report-text-viewer">
+        Loading characterization report...
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-outline" id="btn-copy-report">📋 Copy Report Text</button>
+        <a href="#" onclick="window.open(apiUrl('/api/download/so101_characterization_report.txt'), '_blank'); return false;" class="btn btn-primary" id="btn-download-report">
+          ⬇ Download TXT Report
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION LOGIC -->
+  <script>
+    // Calibration limits matching so101_calibration.json
+    let calibration = {
+      1: { name: "shoulder_pan",  min: -84.1, max: 84.1, safe_min: -60.0, safe_max: 60.0 },
+      2: { name: "shoulder_lift", min: -120.0, max: 90.0, safe_min: -110.0, safe_max: 60.0 },
+      3: { name: "elbow_flex",    min: -110.0, max: 110.0, safe_min: -90.0, safe_max: 90.0 },
+      4: { name: "wrist_flex",    min: -84.3, max: 84.3, safe_min: -70.0, safe_max: 70.0 },
+      5: { name: "wrist_roll",    min: -150.0, max: 150.0, safe_min: -120.0, safe_max: 120.0 },
+      6: { name: "gripper",       min: 0.0,   max: 100.0, safe_min: 0.0,   safe_max: 100.0 }
+    };
+
+    const idToName = {
+      1: "shoulder_pan",
+      2: "shoulder_lift",
+      3: "elbow_flex",
+      4: "wrist_flex",
+      5: "wrist_roll",
+      6: "gripper"
+    };
+
+    const homePosition = {
+      shoulder_pan: 0.88,
+      shoulder_lift: -104.62,
+      elbow_flex: 100.57,
+      wrist_flex: 59.96,
+      wrist_roll: 1.71,
+      gripper: 3.22
+    };
+
+    let ws = null;
+    let latestData = null;
+    let robotConnected = false;
+    let startTime = Date.now();
+    let loadedDatasetFilename = "";
+    let isPlayingTrajectory = false;
+
+    // Generated Calibration State
+    let generatedCalibration = null;
+
+    // 10 Calibrated Diverse Poses across heights (not bottom-clustered)
+    const distributedTestPoses = [
+      { name: "Apex High Center",      pan: 0.0,   lift: -40.0, elbow: 45.0, wrist: 30.0, roll: 0.0,   gripper: 10 },
+      { name: "Mid-Height Left",       pan: 35.0,  lift: -65.0, elbow: 70.0, wrist: 40.0, roll: 20.0,  gripper: 25 },
+      { name: "Mid-Height Right",      pan: -35.0, lift: -65.0, elbow: 70.0, wrist: 40.0, roll: -20.0, gripper: 30 },
+      { name: "High Elevated Left",    pan: 40.0,  lift: -30.0, elbow: 35.0, wrist: 20.0, roll: 15.0,  gripper: 5  },
+      { name: "Forward Mid Extension", pan: 5.0,   lift: -55.0, elbow: 60.0, wrist: 25.0, roll: 0.0,   gripper: 50 },
+      { name: "High Elevated Right",   pan: -40.0, lift: -30.0, elbow: 35.0, wrist: 20.0, roll: -15.0, gripper: 15 },
+      { name: "Low-Mid Shelf",         pan: 0.0,   lift: -85.0, elbow: 85.0, wrist: 50.0, roll: 0.0,   gripper: 40 },
+      { name: "Top Vertical Reach",    pan: -15.0, lift: -20.0, elbow: 25.0, wrist: 10.0, roll: -10.0, gripper: 20 },
+      { name: "Elevated Right Reach",  pan: -25.0, lift: -40.0, elbow: 45.0, wrist: 30.0, roll: 30.0,  gripper: 10 },
+      { name: "Elevated Left Sweep",   pan: 25.0,  lift: -50.0, elbow: 55.0, wrist: 35.0, roll: -25.0, gripper: 5  }
+    ];
+
+    let isTestRunning = false;
+    let testCycle = 0;
+    const maxTestCycles = 10;
+    let testSuccessCount = 0;
+    let testErrors = [];
+    let testTimes = [];
+    let testTimer = null;
+
+    // Helper: get current manual velocity value (Requirement 1)
+    function getManualVelocity() {
+      const input = document.getElementById('manual-velocity-input');
+      const v = parseFloat(input ? input.value : 1.5);
+      return (isNaN(v) || v <= 0) ? 1.5 : Math.min(5.0, Math.max(0.1, v));
+    }
+
+    // ----------------------------------------------------
+    // PAGE NAVIGATION LOGIC (REQUIREMENT 4)
+    // ----------------------------------------------------
+    const navButtons = document.querySelectorAll('.nav-btn');
+    const pageViews = document.querySelectorAll('.page-view');
+    const headerTitle = document.getElementById('top-header-title');
+
+    navButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pageKey = btn.getAttribute('data-page');
+        if (!pageKey) return;
+
+        navButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        pageViews.forEach(pv => {
+          if (pv.id === `page-${pageKey}`) {
+            pv.classList.add('active');
+          } else {
+            pv.classList.remove('active');
+          }
+        });
+
+        // Update header title based on page
+        if (pageKey === 'control') headerTitle.innerText = "SO-100 / SO-101 Robotic Arm Control";
+        else if (pageKey === 'monitoring') headerTitle.innerText = "SO-101 Multi-Joint Real-Time Dynamics Monitoring";
+        else if (pageKey === 'calibrate') headerTitle.innerText = "SO-101 LeRobot Calibration (Official Workflow)";
+        else if (pageKey === 'camera') {
+          headerTitle.innerText = "SO-101 Multi-Camera Vision & Streaming Studio";
+          loadCameraDevices();
+        }
+        else if (pageKey === 'settings') headerTitle.innerText = "SO-101 Robot & ROS 2 Bridge Settings";
+        else if (pageKey === 'about') headerTitle.innerText = "About SO-101 Robotic Manipulator";
+      });
+    });
+
+    // Uptime & Clock
+    function updateClocks() {
+      const now = new Date();
+      document.getElementById('footer-clock').innerText = now.toLocaleTimeString();
+
+      const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+      const hrs = String(Math.floor(elapsedSec / 3600)).padStart(2, '0');
+      const mins = String(Math.floor((elapsedSec % 3600) / 60)).padStart(2, '0');
+      const secs = String(elapsedSec % 60).padStart(2, '0');
+      document.getElementById('sum-uptime').innerText = `: ${hrs}:${mins}:${secs}`;
+    }
+    setInterval(updateClocks, 1000);
+    updateClocks();
+
+    // Logging helper
+    function appendLog(msg, type = "normal") {
+      const logBox = document.getElementById('log-box-container');
+      if (!logBox) return;
+      const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const bulletClass = type === "err" ? "log-bullet err" : (type === "warn" ? "log-bullet warn" : "log-bullet");
+
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.innerHTML = `
+        <span class="${bulletClass}"></span>
+        <span class="log-time">${timeStr}</span>
+        <span>${msg}</span>
+      `;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    document.getElementById('btn-clear-logs').addEventListener('click', () => {
+      document.getElementById('log-box-container').innerHTML = '';
+      appendLog("Logs cleared.");
+    });
+
+    // ----------------------------------------------------
+    // BRIDGE URL & ENDPOINT RESOLVER (GITHUB + RENDER DEPLOYMENT)
+    // ----------------------------------------------------
+    function getBridgeBaseUrl() {
+      const loc = window.location;
+      const isLocal = loc.hostname === 'localhost' || loc.hostname === '127.0.0.1' || loc.hostname.endsWith('.local');
+      const saved = localStorage.getItem('so101_bridge_url');
+      if (saved && saved.trim()) {
+        return saved.trim().replace(/\/$/, '');
+      }
+      return isLocal ? '' : 'http://localhost:8080';
+    }
+
+    function getBridgeWsUrl() {
+      const base = getBridgeBaseUrl();
+      if (!base) {
+        const loc = window.location;
+        const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${proto}//${loc.hostname || 'localhost'}:${loc.port || 8080}/ws`;
+      }
+      return base.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:') + '/ws';
+    }
+
+    function apiUrl(path) {
+      const base = getBridgeBaseUrl();
+      const clean = path.startsWith('/') ? path : '/' + path;
+      return base ? `${base}${clean}` : clean;
+    }
+
+    function saveBridgeUrl(url) {
+      if (!url || !url.trim()) {
+        localStorage.removeItem('so101_bridge_url');
+      } else {
+        let clean = url.trim().replace(/\/$/, '');
+        if (!/^https?:\/\//i.test(clean)) {
+          clean = 'http://' + clean;
+        }
+        localStorage.setItem('so101_bridge_url', clean);
+      }
+      syncBridgeInputs();
+      appendLog(`Bridge URL set to: ${getBridgeBaseUrl() || 'local (relative)'}`);
+      if (ws) {
+        try { ws.close(); } catch(e) {}
+      }
+      initWebSocket();
+    }
+
+    function syncBridgeInputs() {
+      const active = getBridgeBaseUrl() || 'http://localhost:8080';
+      const cInput = document.getElementById('bridge-url-input');
+      const sInput = document.getElementById('settings-bridge-url');
+      if (cInput && !cInput.matches(':focus')) cInput.value = active;
+      if (sInput && !sInput.matches(':focus')) sInput.value = active;
+    }
+
+    document.getElementById('btn-save-bridge').addEventListener('click', () => {
+      const val = document.getElementById('bridge-url-input').value;
+      saveBridgeUrl(val);
+    });
+
+    document.getElementById('btn-save-settings-bridge').addEventListener('click', () => {
+      const val = document.getElementById('settings-bridge-url').value;
+      saveBridgeUrl(val);
+      alert(`Robot Bridge URL saved: ${getBridgeBaseUrl() || 'http://localhost:8080'}`);
+    });
+
+    // ----------------------------------------------------
+    // WEBSOCKET & AUTOMATIC DISCONNECTION DETECTION (REQUIREMENT 2)
+    // ----------------------------------------------------
+    let wsReconnectTimeout = null;
+
+    function initWebSocket() {
+      syncBridgeInputs();
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      const wsUrl = getBridgeWsUrl();
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (err) {
+        console.warn("WebSocket creation error:", err);
+      }
+
+      if (!ws) return;
+
+      ws.onopen = () => {
+        appendLog(`WebSocket connected to bridge: ${wsUrl}`);
+        scanPorts();
+        loadDatasetsList();
+        initMonitoringCards();
+        loadSettingsCalibration();
+      };
+
+      ws.onerror = (err) => {
+        if (window.location.protocol === 'https:' && wsUrl.startsWith('ws:')) {
+          appendLog("Notice: HTTPS page trying to connect to insecure ws:// bridge. Allow insecure content in browser or run locally.", "warn");
+        }
+      };
+
+      ws.onclose = () => {
+        updateConnUI(false, 0, "/dev/ttyACM0", "Bridge Offline");
+        if (wsReconnectTimeout) clearTimeout(wsReconnectTimeout);
+        wsReconnectTimeout = setTimeout(initWebSocket, 2500);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+
+          // REQUIREMENT 2: IMMEDIATE DISCONNECTION EVENT
+          if (msg.type === 'hardware_disconnected') {
+            updateConnUI(false, 0, msg.port || "/dev/ttyACM0", "USB Cable Unplugged / Disconnected");
+            appendLog(`[ALERT] Hardware disconnected: ${msg.message}`, "err");
+            abortRunningTasksOnDisconnect();
+            return;
+          }
+
+          if (msg.type === 'telemetry') {
+            latestData = msg;
+            renderTelemetry(msg);
+            updateConnUI(msg.robot_connected, msg.online_count, msg.port);
+
+            if (msg.recording) {
+              document.getElementById('rec-status-text').innerText = `● Recording Live Arm Motion (${msg.samples} pts)`;
+            }
+
+            // If calibration is recording ranges, update table live
+            if (msg.calib_recording_ranges && msg.calib_ranges) {
+              updateCalibRangesTable(msg.calib_ranges, msg.joints);
+            }
+          } else if (msg.type === 'init') {
+            if (msg.available_ports) updatePortsList(msg.available_ports);
+            updateConnUI(msg.robot_connected, msg.online_count, msg.active_port);
+          } else if (msg.type === 'connect_result') {
+            const res = msg.result || {};
+            updateConnUI(res.success, res.online_count, res.port);
+            appendLog(res.message || "Connection result received.");
+          } else if (msg.type === 'disconnect_result') {
+            updateConnUI(false, 0);
+            appendLog("Robot disconnected.");
+          } else if (msg.type === 'ports_list') {
+            updatePortsList(msg.ports || []);
+          } else if (msg.type === 'record_status') {
+            updateRecordUI(msg.recording, msg.filename);
+          } else if (msg.type === 'report_ready') {
+            showReportModal(msg.report);
+          } else if (msg.type === 'playback_progress') {
+            updatePlaybackProgress(msg);
+          } else if (msg.type === 'playback_finished') {
+            handlePlaybackFinished(msg.filename);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+    }
+
+    // Safety abort when hardware disconnects
+    function abortRunningTasksOnDisconnect() {
+      if (isTestRunning) {
+        isTestRunning = false;
+        if (testTimer) clearTimeout(testTimer);
+        document.getElementById('btn-start-test').disabled = false;
+        document.getElementById('btn-stop-test').disabled = true;
+      }
+      if (isPlayingTrajectory) {
+        isPlayingTrajectory = false;
+        document.getElementById('btn-play-dataset').disabled = false;
+        document.getElementById('btn-stop-playback').disabled = true;
+        document.getElementById('playback-status-text').innerText = "Playback Aborted: Robot Disconnected";
+      }
+    }
+
+    // STATUS SUMMARY & CONNECTION DETECTION (REQUIREMENT 2)
+    function updateConnUI(connected, onlineCount, port = "/dev/ttyACM0", statusOverride = null) {
+      robotConnected = connected;
+      const btnConnect = document.getElementById('btn-connect');
+      const btnDisconnect = document.getElementById('btn-disconnect');
+      const badge = document.getElementById('conn-status-badge');
+      const msg = document.getElementById('conn-status-msg');
+      const sumConn = document.getElementById('sum-conn');
+      const sumPort = document.getElementById('sum-port');
+      const footerConn = document.getElementById('footer-conn-text');
+      const footerDot = document.getElementById('footer-dot');
+      const readyPill = document.getElementById('system-ready-pill');
+      const readyText = document.getElementById('system-status-text');
+
+      // Control buttons to safeguard
+      const moveBtn = document.getElementById('btn-move-robot');
+
+      sumPort.innerText = `: ${port}`;
+
+      if (connected) {
+        btnConnect.disabled = true;
+        btnDisconnect.disabled = false;
+        badge.className = 'conn-status-indicator online';
+        msg.innerText = `Connected (${onlineCount}/6 Servos Online)`;
+        sumConn.style.color = 'var(--success-green)';
+        sumConn.innerText = `: ● Connected (${onlineCount}/6 Servos)`;
+        footerConn.innerText = `Connected (${port})`;
+        footerDot.style.background = 'var(--success-green)';
+        readyPill.className = "system-ready-pill";
+        readyText.innerText = "System Ready";
+        moveBtn.disabled = false;
+      } else {
+        btnConnect.disabled = false;
+        btnDisconnect.disabled = true;
+        badge.className = 'conn-status-indicator offline';
+        msg.innerText = statusOverride || "Disconnected (Cable Unplugged)";
+        sumConn.style.color = 'var(--danger-red)';
+        sumConn.innerText = `: ● Disconnected`;
+        footerConn.innerText = `Disconnected`;
+        footerDot.style.background = 'var(--danger-red)';
+        readyPill.className = "system-ready-pill offline";
+        readyText.innerText = statusOverride || "Robot Offline";
+        moveBtn.disabled = true;
+      }
+    }
+
+    function scanPorts() {
+      fetch(apiUrl('/api/ports'))
+        .then(r => r.json())
+        .then(data => updatePortsList(data.ports || []))
+        .catch(() => {});
+    }
+
+    function updatePortsList(ports) {
+      const select = document.getElementById('port-select');
+      const current = select.value;
+      select.innerHTML = '';
+      if (!ports || ports.length === 0) ports = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0'];
+      for (let i = 0; i < ports.length; i++) {
+        const p = ports[i];
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.innerText = p;
+        if (p === current || (i === 0 && !current)) opt.selected = true;
+        select.appendChild(opt);
+      }
+    }
+
+    document.getElementById('btn-scan-ports').addEventListener('click', () => {
+      appendLog("Scanning serial ports...");
+      scanPorts();
+    });
+
+    document.getElementById('btn-connect').addEventListener('click', () => {
+      const port = document.getElementById('port-select').value;
+      appendLog(`Connecting to ${port} (1,000,000 baud)...`);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'connect_robot', port: port, baudrate: 1000000 }));
+      }
+    });
+
+    document.getElementById('btn-disconnect').addEventListener('click', () => {
+      appendLog("Disconnecting hardware...");
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'disconnect_robot' }));
+      }
+    });
+
+    // ----------------------------------------------------
+    // QUICK ACTION TILES
+    // ----------------------------------------------------
+    document.getElementById('btn-tile-home').addEventListener('click', () => {
+      const vel = getManualVelocity();
+      appendLog(`Moving to Calibrated Home position at ${vel} rad/s...`);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'home', speed: vel }));
+      }
+      document.getElementById('val-1').value = homePosition.shoulder_pan.toFixed(1);
+      document.getElementById('slider-1').value = homePosition.shoulder_pan.toFixed(1);
+      document.getElementById('val-2').value = homePosition.shoulder_lift.toFixed(1);
+      document.getElementById('slider-2').value = homePosition.shoulder_lift.toFixed(1);
+      document.getElementById('val-3').value = homePosition.elbow_flex.toFixed(1);
+      document.getElementById('slider-3').value = homePosition.elbow_flex.toFixed(1);
+      document.getElementById('val-4').value = homePosition.wrist_flex.toFixed(1);
+      document.getElementById('slider-4').value = homePosition.wrist_flex.toFixed(1);
+      document.getElementById('val-5').value = homePosition.wrist_roll.toFixed(1);
+      document.getElementById('slider-5').value = homePosition.wrist_roll.toFixed(1);
+      document.getElementById('val-6').value = homePosition.gripper.toFixed(1);
+      document.getElementById('slider-6').value = homePosition.gripper.toFixed(1);
+    });
+
+    document.getElementById('btn-tile-zero').addEventListener('click', () => {
+      const vel = getManualVelocity();
+      appendLog(`Moving to Canonical Zero position at ${vel} rad/s...`);
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'zero', speed: vel }));
+      }
+      for (let i = 1; i <= 6; i++) {
+        document.getElementById(`val-${i}`).value = "0.0";
+        document.getElementById(`slider-${i}`).value = "0.0";
+      }
+    });
+
+    // ----------------------------------------------------
+    // LIVE DYNAMIC JOINT CONTROL (STREAMING & WHEEL SCROLL - NO 'MOVE' BUTTON NEEDED)
+    // ----------------------------------------------------
+    function clampVal(val, min, max) {
+      return Math.min(max, Math.max(min, val));
+    }
+
+    // Throttled Live Joint Streaming (~33 Hz streaming rate to avoid bus congestion)
+    let liveJointTimer = null;
+    let pendingLiveJoints = {};
+    let lastLiveJointSend = 0;
+    const LIVE_STREAM_INTERVAL_MS = 30; // 30 ms throttle for smooth real-time physical movement
+
+    function streamJointUpdate(jointName, valueDeg, forceFlush = false) {
+      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) return;
+      pendingLiveJoints[jointName] = valueDeg;
+
+      const now = performance.now();
+      if (forceFlush || (now - lastLiveJointSend >= LIVE_STREAM_INTERVAL_MS)) {
+        flushLiveJointStream();
+      } else if (!liveJointTimer) {
+        liveJointTimer = setTimeout(() => {
+          liveJointTimer = null;
+          flushLiveJointStream();
+        }, LIVE_STREAM_INTERVAL_MS - (now - lastLiveJointSend));
+      }
+    }
+
+    function flushLiveJointStream() {
+      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+        pendingLiveJoints = {};
+        return;
+      }
+      const keys = Object.keys(pendingLiveJoints);
+      if (keys.length === 0) return;
+
+      const vel = getManualVelocity();
+      lastLiveJointSend = performance.now();
+
+      if (keys.length === 1) {
+        const jName = keys[0];
+        const val = pendingLiveJoints[jName];
+        ws.send(JSON.stringify({
+          type: 'command',
+          joint: jName,
+          position_deg: val,
+          speed: vel
+        }));
+      } else {
+        const copy = { ...pendingLiveJoints };
+        ws.send(JSON.stringify({
+          type: 'multi_command',
+          positions: copy,
+          speed: vel
+        }));
+      }
+      pendingLiveJoints = {};
+    }
+
+    for (let id = 1; id <= 6; id++) {
+      const slider = document.getElementById(`slider-${id}`);
+      const valInput = document.getElementById(`val-${id}`);
+      const row = document.getElementById(`row-joint-${id}`);
+      const name = idToName[id];
+      const cal = calibration[id];
+
+      // 1. Live dragging on slider: updates value & moves robot live
+      slider.addEventListener('input', () => {
+        const v = parseFloat(slider.value);
+        valInput.value = (id === 6 ? v.toFixed(0) : v.toFixed(1));
+        streamJointUpdate(name, v, false);
+      });
+
+      // Slider release: ensures the exact final position is flushed immediately
+      slider.addEventListener('change', () => {
+        const v = parseFloat(slider.value);
+        valInput.value = (id === 6 ? v.toFixed(0) : v.toFixed(1));
+        streamJointUpdate(name, v, true);
+      });
+
+      // 2. Mouse wheel scrolling on slider or entire joint row
+      const handleWheelScroll = (e) => {
+        e.preventDefault();
+        const step = (id === 6 ? 2.0 : 0.5);
+        let curr = parseFloat(slider.value) || 0.0;
+        if (e.deltaY < 0) {
+          curr += step; // scroll up -> increase angle
+        } else {
+          curr -= step; // scroll down -> decrease angle
+        }
+        curr = clampVal(curr, cal.min, cal.max);
+        const formatted = (id === 6 ? curr.toFixed(0) : curr.toFixed(1));
+        slider.value = formatted;
+        valInput.value = formatted;
+        streamJointUpdate(name, curr, false);
+      };
+
+      if (row) {
+        row.addEventListener('wheel', handleWheelScroll, { passive: false });
+      } else {
+        slider.addEventListener('wheel', handleWheelScroll, { passive: false });
+      }
+
+      // 3. Manual editable number input (Live typing & steppers)
+      valInput.addEventListener('input', () => {
+        const v = parseFloat(valInput.value);
+        if (!isNaN(v)) {
+          const clamped = clampVal(v, cal.min, cal.max);
+          slider.value = (id === 6 ? clamped.toFixed(0) : clamped.toFixed(1));
+          streamJointUpdate(name, clamped, false);
+        }
+      });
+
+      valInput.addEventListener('change', () => {
+        let v = parseFloat(valInput.value);
+        if (isNaN(v)) v = parseFloat(slider.value) || 0.0;
+        v = clampVal(v, cal.min, cal.max);
+        const formatted = (id === 6 ? v.toFixed(0) : v.toFixed(1));
+        valInput.value = formatted;
+        slider.value = formatted;
+        streamJointUpdate(name, v, true);
+      });
+
+      valInput.addEventListener('blur', () => {
+        let v = parseFloat(valInput.value);
+        if (isNaN(v)) v = parseFloat(slider.value) || 0.0;
+        v = clampVal(v, cal.min, cal.max);
+        const formatted = (id === 6 ? v.toFixed(0) : v.toFixed(1));
+        valInput.value = formatted;
+        slider.value = formatted;
+        streamJointUpdate(name, v, true);
+      });
+
+      valInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          valInput.blur();
+        }
+      });
+    }
+
+    function sendJointValuesToRobot() {
+      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+        alert("Robot not connected!");
+        return;
+      }
+      const positions = {};
+      for (let id = 1; id <= 6; id++) {
+        const name = idToName[id];
+        const cal = calibration[id];
+        let v = parseFloat(document.getElementById(`val-${id}`).value);
+        if (isNaN(v)) v = parseFloat(document.getElementById(`slider-${id}`).value) || 0.0;
+        v = clampVal(v, cal.min, cal.max);
+        positions[name] = v;
+      }
+      const vel = getManualVelocity();
+      appendLog(`Sending batch joint positions to physical arm at ${vel} rad/s...`);
+      ws.send(JSON.stringify({
+        type: 'multi_command',
+        positions: positions,
+        speed: vel
+      }));
+    }
+
+    document.getElementById('btn-move-robot').addEventListener('click', sendJointValuesToRobot);
+
+    // ----------------------------------------------------
+    // REAL-TIME MONITORING TABLE & CARDS
+    // ----------------------------------------------------
+    function initMonitoringCards() {
+      const grid = document.getElementById('monitor-cards-grid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      for (let id = 1; id <= 6; id++) {
+        const name = idToName[id];
+        const card = document.createElement('div');
+        card.className = 'joint-monitor-card';
+        card.id = `m-card-${name}`;
+        card.innerHTML = `
+          <div class="joint-monitor-header">
+            <span class="joint-monitor-name">${name.replace('_', ' ').toUpperCase()} (ID: ${id})</span>
+            <span class="status-badge-ok" id="m-status-${name}">✔ OK</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:baseline;">
+            <span class="joint-monitor-degrees" id="m-deg-${name}">0.0°</span>
+            <span style="font-size:0.75rem; color:var(--text-muted);" id="m-target-${name}">Tgt: 0.0°</span>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; font-size:0.72rem; color:var(--text-muted); background:var(--card-inner); padding:8px; border-radius:6px;">
+            <div>Error: <strong id="m-err-${name}" style="color:#fff;">0.0°</strong></div>
+            <div>Latency: <strong id="m-rt-${name}" style="color:#fff;">0.0 ms</strong></div>
+            <div>Voltage: <strong id="m-volt-${name}" style="color:#fff;">5.0 V</strong></div>
+            <div>Temp: <strong id="m-temp-${name}" style="color:#fff;">30°C</strong></div>
+          </div>
+        `;
+        grid.appendChild(card);
+      }
+    }
+
+    function renderTelemetry(data) {
+      if (!data.joints) return;
+
+      let totalVolt = 0.0;
+      let voltCount = 0;
+
+      for (let id = 1; id <= 6; id++) {
+        const name = idToName[id];
+        const j = data.joints[name];
+        if (!j) continue;
+
+        // Table row update
+        const row = document.getElementById(`row-${name}`);
+        if (row) {
+          const unit = id === 6 ? "%" : "°";
+          row.querySelector('.col-target').innerText = `${j.target_deg.toFixed(1)}${unit}`;
+          row.querySelector('.col-actual').innerText = `${j.actual_deg.toFixed(1)}${unit}`;
+          const err = Math.abs(j.error_deg);
+          row.querySelector('.col-error').innerText = `${err.toFixed(1)}${unit}`;
+
+          const statusCell = row.querySelector('td:last-child');
+          if (err <= 1.0) {
+            statusCell.innerHTML = `<span class="status-badge-ok">✔ Reached</span>`;
+          } else if (err <= 3.0) {
+            statusCell.innerHTML = `<span class="status-badge-warn">⏳ Settling (${err.toFixed(1)}${unit})</span>`;
+          } else {
+            statusCell.innerHTML = `<span class="status-badge-warn" style="color:var(--cyan-accent);">🔄 Moving (${err.toFixed(1)}${unit})</span>`;
+          }
+        }
+
+        // Monitoring Page Card update
+        const degEl = document.getElementById(`m-deg-${name}`);
+        if (degEl) {
+          const unit = id === 6 ? "%" : "°";
+          degEl.innerText = `${j.actual_deg.toFixed(1)}${unit}`;
+          document.getElementById(`m-target-${name}`).innerText = `Tgt: ${j.target_deg.toFixed(1)}${unit}`;
+          document.getElementById(`m-err-${name}`).innerText = `${Math.abs(j.error_deg).toFixed(1)}${unit}`;
+          document.getElementById(`m-rt-${name}`).innerText = `${j.reaction_time_ms} ms`;
+          document.getElementById(`m-volt-${name}`).innerText = `${j.voltage_v} V`;
+          document.getElementById(`m-temp-${name}`).innerText = `${j.temperature_c}°C`;
+        }
+
+        if (j.voltage_v) {
+          totalVolt += j.voltage_v;
+          voltCount++;
+        }
+      }
+
+      if (voltCount > 0) {
+        document.getElementById('sum-volt').innerText = `: ${(totalVolt / voltCount).toFixed(1)} V`;
+      }
+    }
+
+    // ----------------------------------------------------
+    // RANDOM TARGET DYNAMICS TESTING (10 Poses Across Heights)
+    // ----------------------------------------------------
+    document.getElementById('btn-start-test').addEventListener('click', () => {
+      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+        alert("Robot not connected!");
+        return;
+      }
+      isTestRunning = true;
+      testCycle = 0;
+      testSuccessCount = 0;
+      testErrors = [];
+      testTimes = [];
+      document.getElementById('btn-start-test').disabled = true;
+      document.getElementById('btn-stop-test').disabled = false;
+      appendLog("Starting 10-cycle Dynamics Testing across heights...");
+      executeTestCycle();
+    });
+
+    document.getElementById('btn-stop-test').addEventListener('click', () => {
+      isTestRunning = false;
+      if (testTimer) clearTimeout(testTimer);
+      document.getElementById('btn-start-test').disabled = false;
+      document.getElementById('btn-stop-test').disabled = true;
+      appendLog("Testing stopped by user.", "warn");
+    });
+
+    function executeTestCycle() {
+      if (!isTestRunning || testCycle >= maxTestCycles) {
+        isTestRunning = false;
+        document.getElementById('btn-start-test').disabled = false;
+        document.getElementById('btn-stop-test').disabled = true;
+        appendLog(`Test finished! 10 cycles complete. Generating characterization report...`);
+        fetchReport();
+        return;
+      }
+
+      const pose = distributedTestPoses[testCycle];
+      testCycle++;
+      const pct = Math.round((testCycle / maxTestCycles) * 100);
+      document.getElementById('test-progress-pct').innerText = `${pct}%`;
+      document.getElementById('test-progress-bar').style.width = `${pct}%`;
+      document.getElementById('metric-poses').innerText = testCycle;
+
+      const vel = getManualVelocity();
+      const targets = {
+        shoulder_pan: pose.pan,
+        shoulder_lift: pose.lift,
+        elbow_flex: pose.elbow,
+        wrist_flex: pose.wrist,
+        wrist_roll: pose.roll,
+        gripper: pose.gripper
+      };
+
+      appendLog(`[Cycle ${testCycle}/10 - ${pose.name}] Moving to targets at velocity ${vel} rad/s...`);
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'multi_command',
+          positions: targets,
+          speed: vel
+        }));
+      }
+
+      testTimer = setTimeout(() => {
+        evaluateTestCycle(targets);
+      }, 1600);
+    }
+
+    function evaluateTestCycle(targets) {
+      if (!latestData || !latestData.joints) return;
+
+      let maxErr = 0;
+      let maxRt = 0;
+      for (const [name, targetVal] of Object.entries(targets)) {
+        const j = latestData.joints[name];
+        if (j) {
+          const err = Math.abs(j.actual_deg - targetVal);
+          if (err > maxErr) maxErr = err;
+          if (j.reaction_time_ms > maxRt) maxRt = j.reaction_time_ms;
+        }
+      }
+
+      testErrors.push(maxErr);
+      testTimes.push(maxRt || 35.0);
+      if (maxErr <= 1.5) testSuccessCount++;
+
+      const successPct = ((testSuccessCount / testCycle) * 100).toFixed(1);
+      const avgErr = (testErrors.reduce((a,b)=>a+b,0) / testErrors.length).toFixed(1);
+      const avgTime = (testTimes.reduce((a,b)=>a+b,0) / testTimes.length).toFixed(1);
+
+      document.getElementById('metric-success').innerText = `${successPct}%`;
+      document.getElementById('metric-error').innerText = `${avgErr}°`;
+      document.getElementById('metric-time').innerText = `${avgTime} ms`;
+
+      if (isTestRunning) {
+        executeTestCycle();
+      }
+    }
+
+    function fetchReport() {
+      fetch(apiUrl('/api/report'))
+        .then(r => r.json())
+        .then(data => {
+          showReportModal(data.report);
+        })
+        .catch(err => {
+          appendLog("Failed to load report: " + err, "err");
+        });
+    }
+
+    function showReportModal(reportTxt) {
+      document.getElementById('report-text-viewer').innerText = reportTxt;
+      const dlBtn = document.getElementById('btn-download-report');
+      if (dlBtn) dlBtn.href = apiUrl('/api/download/so101_characterization_report.txt');
+      document.getElementById('report-modal').style.display = 'flex';
+    }
+
+    document.getElementById('btn-view-results').addEventListener('click', fetchReport);
+    document.getElementById('btn-close-modal').addEventListener('click', () => {
+      document.getElementById('report-modal').style.display = 'none';
+    });
+    document.getElementById('btn-copy-report').addEventListener('click', () => {
+      const text = document.getElementById('report-text-viewer').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        alert("Report text copied to clipboard!");
+      });
+    });
+
+    // ----------------------------------------------------
+    // RECORDING & DATASET PLAYBACK
+    // ----------------------------------------------------
+    document.getElementById('btn-rec-start').addEventListener('click', () => {
+      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+        alert("Robot not connected!");
+        return;
+      }
+      ws.send(JSON.stringify({
+        type: 'start_record',
+        prefix: 'manual_lead_through',
+        disable_torque: true
+      }));
+      appendLog("Torque turned OFF! Arm is limp. Move joints freely by hand to record motion trajectory.");
+    });
+
+    document.getElementById('btn-rec-stop').addEventListener('click', () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'stop_record' }));
+        appendLog("Recording stopped. Trajectory saved to data/raw/.");
+      }
+    });
+
+    document.getElementById('btn-rec-save').addEventListener('click', () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'stop_record' }));
+        appendLog("Dataset saved to data/raw/.");
+        loadDatasetsList();
+      }
+    });
+
+    function updateRecordUI(recording, filename) {
+      const btnStart = document.getElementById('btn-rec-start');
+      const btnStop = document.getElementById('btn-rec-stop');
+      const statusText = document.getElementById('rec-status-text');
+
+      if (recording) {
+        btnStart.disabled = true;
+        btnStop.disabled = false;
+        statusText.style.color = "var(--danger-red)";
+        statusText.innerText = `● Recording (Torque OFF - Move Arm by Hand)`;
+      } else {
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+        statusText.style.color = "#fff";
+        statusText.innerText = "Not Recording";
+        loadDatasetsList();
+      }
+    }
+
+    function loadDatasetsList() {
+      fetch(apiUrl('/api/recordings'))
+        .then(r => r.json())
+        .then(data => {
+          const select = document.getElementById('dataset-select');
+          select.innerHTML = '';
+          const files = data.recordings || [];
+          if (files.length === 0) {
+            select.innerHTML = '<option value="">No datasets found</option>';
+            return;
+          }
+          for (const f of files) {
+            const opt = document.createElement('option');
+            opt.value = f.filename;
+            opt.innerText = `${f.filename} (${f.size_kb} KB)`;
+            select.appendChild(opt);
+          }
+        })
+        .catch(()=>{});
+    }
+
+    document.getElementById('btn-load-dataset').addEventListener('click', () => {
+      const fname = document.getElementById('dataset-select').value;
+      if (!fname) {
+        alert("Please select a dataset to load.");
+        return;
+      }
+      appendLog(`Loading dataset into application: ${fname}...`);
+      fetch(apiUrl(`/api/dataset_info/${fname}`))
+        .then(r => r.json())
+        .then(info => {
+          if (info.success) {
+            loadedDatasetFilename = fname;
+            document.getElementById('loaded-dataset-name').innerText = fname;
+            document.getElementById('loaded-dataset-meta').innerText = `${info.frames_count} frames • ${info.duration_s}s`;
+            document.getElementById('btn-play-dataset').disabled = false;
+            document.getElementById('playback-status-text').innerText = `Ready to play ${info.frames_count} frames`;
+            appendLog(`Dataset loaded: ${fname} (${info.frames_count} frames, ${info.duration_s}s). Ready for playback.`);
+          } else {
+            alert("Failed to load dataset: " + (info.message || "Unknown error"));
+          }
+        })
+        .catch(err => {
+          appendLog("Error loading dataset info: " + err, "err");
+        });
+    });
+
+    document.getElementById('btn-download-dataset').addEventListener('click', () => {
+      const fname = document.getElementById('dataset-select').value;
+      if (fname) {
+        window.open(apiUrl(`/api/download/${fname}`), '_blank');
+        appendLog(`Downloading CSV dataset file: ${fname}`);
+      } else {
+        alert("Please select a dataset to download.");
+      }
+    });
+
+    document.getElementById('btn-play-dataset').addEventListener('click', () => {
+      if (!loadedDatasetFilename) {
+        alert("No dataset loaded! Please select and load a dataset first.");
+        return;
+      }
+      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+        alert("Robot not connected!");
+        return;
+      }
+
+      isPlayingTrajectory = true;
+      document.getElementById('btn-play-dataset').disabled = true;
+      document.getElementById('btn-stop-playback').disabled = false;
+      document.getElementById('playback-status-text').innerText = `Playing ${loadedDatasetFilename}...`;
+      appendLog(`Starting trajectory playback of ${loadedDatasetFilename} on physical robot...`);
+
+      const vel = getManualVelocity();
+      const speedMult = vel / 1.5;
+      ws.send(JSON.stringify({
+        type: 'play_dataset',
+        filename: loadedDatasetFilename,
+        speed: speedMult
+      }));
+    });
+
+    document.getElementById('btn-stop-playback').addEventListener('click', () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'stop_playback' }));
+        appendLog("Stopping trajectory playback...", "warn");
+      }
+    });
+
+    function updatePlaybackProgress(msg) {
+      const pct = msg.percent || 0;
+      document.getElementById('playback-progress-bar').style.width = `${pct}%`;
+      document.getElementById('playback-pct-text').innerText = `${pct}%`;
+      document.getElementById('playback-status-text').innerText = `Playing frame ${msg.current_frame} / ${msg.total_frames}`;
+    }
+
+    function handlePlaybackFinished(filename) {
+      isPlayingTrajectory = false;
+      document.getElementById('btn-play-dataset').disabled = false;
+      document.getElementById('btn-stop-playback').disabled = true;
+      document.getElementById('playback-status-text').innerText = `Playback finished!`;
+      document.getElementById('playback-progress-bar').style.width = `100%`;
+      document.getElementById('playback-pct-text').innerText = `100%`;
+      appendLog(`Trajectory playback of ${filename} completed successfully.`);
+    }
+
+    // ========================================================
+    // CALIBRATION WORKFLOW LOGIC (OFFICIAL LEROBOT - REQ 5)
+    // ========================================================
+    const btnCalibStep1Start = document.getElementById('btn-calib-step1-start');
+    const btnCalibStep1Record = document.getElementById('btn-calib-step1-record');
+    const btnCalibStep2Start = document.getElementById('btn-calib-step2-start');
+    const btnCalibStep2Stop = document.getElementById('btn-calib-step2-stop');
+    const btnCalibSave = document.getElementById('btn-calib-save');
+    const btnCalibTestHome = document.getElementById('btn-calib-test-home');
+    const calibTableBody = document.getElementById('calib-ranges-tbody');
+
+    // Initialize calibration ranges table
+    function initCalibTable() {
+      calibTableBody.innerHTML = '';
+      for (let sid = 1; sid <= 6; sid++) {
+        const name = idToName[sid];
+        const tr = document.createElement('tr');
+        tr.id = `calib-row-${sid}`;
+        tr.innerHTML = `
+          <td><strong>${name}</strong></td>
+          <td>${sid}</td>
+          <td id="calib-live-tick-${sid}">--</td>
+          <td id="calib-min-tick-${sid}">--</td>
+          <td id="calib-max-tick-${sid}">--</td>
+          <td>
+            <div class="calib-range-bar-track">
+              <div class="calib-range-bar-fill" id="calib-bar-${sid}" style="left:0%; width:0%;"></div>
+            </div>
+          </td>
+        `;
+        calibTableBody.appendChild(tr);
+      }
+    }
+    initCalibTable();
+
+    // Step 1: Start Homing Pose (Torque OFF)
+    btnCalibStep1Start.addEventListener('click', () => {
+      if (!robotConnected) {
+        alert("Robot not connected! Please connect the robot first.");
+        return;
+      }
+      fetch(apiUrl('/api/calibrate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start_homing' })
+      })
+      .then(r => r.json())
+      .then(data => {
+        btnCalibStep1Record.disabled = false;
+        document.getElementById('calib-step1-status').innerText = "Torque OFF! Position arm to middle homing pose, then click Record.";
+        appendLog("Calibration: Torque OFF. Position arm to middle homing position.");
+      })
+      .catch(err => alert("Error: " + err));
+    });
+
+    // Step 1b: Record Homing Offsets
+    btnCalibStep1Record.addEventListener('click', () => {
+      fetch(apiUrl('/api/calibrate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'record_homing' })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('calib-homing-results-box').style.display = 'block';
+        const offsets = data.homing_offsets || {};
+        const raw = data.raw_ticks || {};
+        let html = '';
+        for (const [motor, off] of Object.entries(offsets)) {
+          html += `<div>${motor}: raw=${raw[motor]} → offset=${off}</div>`;
+        }
+        document.getElementById('calib-homing-offsets-list').innerHTML = html;
+        document.getElementById('calib-step1-status').innerText = "✔ Homing offsets recorded!";
+        btnCalibStep2Start.disabled = false;
+        document.getElementById('calib-step2-status').innerText = "Ready to record ranges. Click Start.";
+        appendLog("Calibration: Recorded half-turn homing offsets.");
+      })
+      .catch(err => alert("Error: " + err));
+    });
+
+    // Step 2: Start Range Recording
+    btnCalibStep2Start.addEventListener('click', () => {
+      fetch(apiUrl('/api/calibrate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start_range' })
+      })
+      .then(r => r.json())
+      .then(data => {
+        btnCalibStep2Start.disabled = true;
+        btnCalibStep2Stop.disabled = false;
+        document.getElementById('calib-step2-status').innerText = "🔴 RECORDING: Move all joints sequentially through their full limits!";
+        appendLog("Calibration: Range recording active. Move all joints through full motion.");
+      })
+      .catch(err => alert("Error: " + err));
+    });
+
+    // Live ranges table update
+    function updateCalibRangesTable(ranges, joints) {
+      for (let sid = 1; sid <= 6; sid++) {
+        const name = idToName[sid];
+        const r = ranges[sid] || { min: 2048, max: 2048 };
+        const j = joints ? joints[name] : null;
+        const liveTick = j ? j.encoder_ticks : "--";
+
+        const tickEl = document.getElementById(`calib-live-tick-${sid}`);
+        const minEl = document.getElementById(`calib-min-tick-${sid}`);
+        const maxEl = document.getElementById(`calib-max-tick-${sid}`);
+        const barEl = document.getElementById(`calib-bar-${sid}`);
+
+        if (tickEl) tickEl.innerText = liveTick;
+        if (minEl) minEl.innerText = r.min;
+        if (maxEl) maxEl.innerText = r.max;
+
+        if (barEl && r.max > r.min) {
+          const leftPct = (r.min / 4096) * 100;
+          const widthPct = ((r.max - r.min) / 4096) * 100;
+          barEl.style.left = `${leftPct}%`;
+          barEl.style.width = `${Math.max(4, widthPct)}%`;
+        }
+      }
+    }
+
+    // Step 2b: Stop Range Recording
+    btnCalibStep2Stop.addEventListener('click', () => {
+      fetch(apiUrl('/api/calibrate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop_range' })
+      })
+      .then(r => r.json())
+      .then(data => {
+        btnCalibStep2Stop.disabled = true;
+        btnCalibSave.disabled = false;
+        btnCalibTestHome.disabled = false;
+        document.getElementById('calib-step2-status').innerText = "✔ Range recording completed.";
+
+        generatedCalibration = data.calibration;
+        document.getElementById('calib-json-preview').innerText = JSON.stringify(data.calibration, null, 2);
+        appendLog("Calibration: Completed range recording. Calibration dictionary prepared.");
+      })
+      .catch(err => alert("Error: " + err));
+    });
+
+    // Step 3: Save Calibration
+    btnCalibSave.addEventListener('click', () => {
+      if (!generatedCalibration) {
+        alert("No calibration data generated!");
+        return;
+      }
+      fetch(apiUrl('/api/calibrate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save', calibration: generatedCalibration })
+      })
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('calib-save-status').innerText = "✔ Calibration saved & applied!";
+        appendLog("Calibration: File successfully written to so101_calibration.json and reloaded.");
+        alert("Success: Calibration saved to so101_calibration.json and active in hardware driver!");
+        loadSettingsCalibration();
+      })
+      .catch(err => alert("Error: " + err));
+    });
+
+    // Step 4: Test Home Pose
+    btnCalibTestHome.addEventListener('click', () => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const vel = getManualVelocity();
+        ws.send(JSON.stringify({ type: 'home', speed: vel }));
+        appendLog(`Calibration: Testing Home pose with calibrated parameters at ${vel} rad/s.`);
+      }
+    });
+
+    // Reload settings view calibration
+    function loadSettingsCalibration() {
+      fetch(apiUrl('/api/calibrate'))
+        .then(r => r.json())
+        .then(data => {
+          const pre = document.getElementById('settings-calib-view');
+          if (pre) pre.innerText = JSON.stringify(data.calibration || {}, null, 2);
+        })
+        .catch(()=>{});
+    }
+
+    document.getElementById('btn-calib-reload').addEventListener('click', () => {
+      loadSettingsCalibration();
+      alert("Reloaded active calibration from so101_calibration.json");
+    });
+
+    // ========================================================
+    // UI APPEARANCE & THEME CUSTOMIZATION (REQUIREMENT 1)
+    // ========================================================
+    function applySavedAppearance() {
+      const savedTheme = localStorage.getItem('so101_theme') || 'dark';
+      const savedFont = localStorage.getItem('so101_font') || 'font-sans';
+      const savedSize = localStorage.getItem('so101_font_size') || 'font-size-md';
+
+      setThemeMode(savedTheme);
+      setFontFamily(savedFont);
+      setFontSize(savedSize);
+    }
+
+    function setThemeMode(theme) {
+      const isLight = (theme === 'light');
+      document.body.classList.toggle('theme-light', isLight);
+      localStorage.setItem('so101_theme', theme);
+
+      const darkOpt = document.getElementById('theme-opt-dark');
+      const lightOpt = document.getElementById('theme-opt-light');
+      if (darkOpt && lightOpt) {
+        darkOpt.classList.toggle('active', !isLight);
+        lightOpt.classList.toggle('active', isLight);
+      }
+    }
+
+    function setFontFamily(fontClass) {
+      ['font-sans', 'font-roboto', 'font-tech', 'font-mono'].forEach(f => {
+        document.body.classList.remove(f);
+      });
+      document.body.classList.add(fontClass);
+      localStorage.setItem('so101_font', fontClass);
+
+      const select = document.getElementById('settings-font-family');
+      if (select) select.value = fontClass;
+    }
+
+    function setFontSize(sizeClass) {
+      ['font-size-sm', 'font-size-md', 'font-size-lg', 'font-size-xl'].forEach(s => {
+        document.body.classList.remove(s);
+      });
+      document.body.classList.add(sizeClass);
+      localStorage.setItem('so101_font_size', sizeClass);
+
+      const select = document.getElementById('settings-font-size');
+      if (select) select.value = sizeClass;
+    }
+
+    document.getElementById('theme-opt-dark').addEventListener('click', () => setThemeMode('dark'));
+    document.getElementById('theme-opt-light').addEventListener('click', () => setThemeMode('light'));
+
+    document.getElementById('settings-font-family').addEventListener('change', (e) => {
+      setFontFamily(e.target.value);
+    });
+
+    document.getElementById('settings-font-size').addEventListener('change', (e) => {
+      setFontSize(e.target.value);
+    });
+
+    document.getElementById('btn-reset-ui-settings').addEventListener('click', () => {
+      setThemeMode('dark');
+      setFontFamily('font-sans');
+      setFontSize('font-size-md');
+      alert("UI styling reset to default Dark theme and standard typography.");
+    });
+
+    applySavedAppearance();
+
+    // ========================================================
+    // CAMERA STUDIO & LIVE VIEWER (REQUIREMENTS 3, 4, 5)
+    // ========================================================
+    let activeStreamMode = 'rgb';
+    let cameraPollTimer = null;
+    let isCameraConnected = false;
+
+    function loadCameraDevices() {
+      fetch(apiUrl('/api/camera/devices'))
+        .then(r => r.json())
+        .then(data => {
+          const select = document.getElementById('cam-device-select');
+          if (!select) return;
+          select.innerHTML = '';
+          const devices = data.devices || [];
+          if (devices.length === 0) {
+            select.innerHTML = '<option value="/dev/video0">/dev/video0 (Default Video Device)</option>';
+            return;
+          }
+          devices.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.innerText = d.name;
+            opt.setAttribute('data-type', d.type);
+            opt.setAttribute('data-depth', d.has_depth ? '1' : '0');
+            select.appendChild(opt);
+          });
+          updateCameraModelCapabilities();
+        })
+        .catch(err => console.error("Error scanning cameras:", err));
+    }
+
+    function updateCameraModelCapabilities() {
+      const modelSelect = document.getElementById('cam-model-select');
+      if (!modelSelect) return;
+      const model = modelSelect.value;
+      const devWrap = document.getElementById('cam-dev-select-wrap');
+      const urlWrap = document.getElementById('cam-url-input-wrap');
+      const badge = document.getElementById('cam-cap-badge');
+      const depthBtn = document.getElementById('btn-stream-depth');
+      const sbsBtn = document.getElementById('btn-stream-sbs');
+      const hint = document.getElementById('depth-mode-hint');
+
+      if (model === 'network') {
+        devWrap.style.display = 'none';
+        urlWrap.style.display = 'block';
+        badge.className = 'cam-badge-tag rgb';
+        badge.innerText = 'RGB ONLY';
+        depthBtn.disabled = true;
+        sbsBtn.disabled = true;
+        hint.innerText = '• ESP32-CAM / IP camera streams RGB video over HTTP network connection.';
+        if (activeStreamMode !== 'rgb') setStreamMode('rgb');
+      } else if (model === 'realsense') {
+        devWrap.style.display = 'block';
+        urlWrap.style.display = 'none';
+        badge.className = 'cam-badge-tag realsense';
+        badge.innerText = 'RGB + 3D DEPTH';
+        depthBtn.disabled = false;
+        sbsBtn.disabled = false;
+        hint.innerText = '• Intel RealSense streams calibrated high-precision 16-bit Depth and RGB.';
+      } else if (model === 'orbbec') {
+        devWrap.style.display = 'block';
+        urlWrap.style.display = 'none';
+        badge.className = 'cam-badge-tag depth';
+        badge.innerText = 'RGB + 3D DEPTH';
+        depthBtn.disabled = false;
+        sbsBtn.disabled = false;
+        hint.innerText = '• Orbbec 3D camera streams structured-light / ToF Depth and RGB.';
+      } else {
+        devWrap.style.display = 'block';
+        urlWrap.style.display = 'none';
+        badge.className = 'cam-badge-tag rgb';
+        badge.innerText = 'RGB ONLY';
+        depthBtn.disabled = true;
+        sbsBtn.disabled = true;
+        hint.innerText = '• Standard UVC / V4L2 webcams stream native RGB. (Depth options require RealSense or Orbbec).';
+        if (activeStreamMode !== 'rgb') setStreamMode('rgb');
+      }
+    }
+
+    document.getElementById('cam-model-select').addEventListener('change', updateCameraModelCapabilities);
+    document.getElementById('btn-cam-refresh').addEventListener('click', loadCameraDevices);
+
+    function setStreamMode(mode) {
+      activeStreamMode = mode;
+      document.querySelectorAll('.stream-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+      });
+
+      const feedImg = document.getElementById('cam-feed-img');
+      const hudMode = document.getElementById('hud-mode-text');
+      const liveBadge = document.getElementById('cam-live-badge');
+
+      if (mode === 'depth') {
+        hudMode.innerText = "DEPTH";
+        liveBadge.innerText = "Depth Feed";
+        liveBadge.className = "cam-badge-tag depth";
+      } else if (mode === 'side_by_side') {
+        hudMode.innerText = "RGB+DEPTH";
+        liveBadge.innerText = "RGB + Depth";
+        liveBadge.className = "cam-badge-tag realsense";
+      } else {
+        hudMode.innerText = "RGB";
+        liveBadge.innerText = "RGB Feed";
+        liveBadge.className = "cam-badge-tag rgb";
+      }
+
+      if (isCameraConnected) {
+        feedImg.src = apiUrl(`/api/camera/stream?mode=${mode}&t=${Date.now()}`);
+        fetch(apiUrl('/api/camera/settings'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stream_mode: mode })
+        });
+      }
+    }
+
+    document.getElementById('btn-stream-rgb').addEventListener('click', () => setStreamMode('rgb'));
+    document.getElementById('btn-stream-depth').addEventListener('click', () => setStreamMode('depth'));
+    document.getElementById('btn-stream-sbs').addEventListener('click', () => setStreamMode('side_by_side'));
+
+    // Connect Camera
+    document.getElementById('btn-cam-connect').addEventListener('click', () => {
+      const model = document.getElementById('cam-model-select').value;
+      const devId = document.getElementById('cam-device-select').value || '/dev/video0';
+      const res = document.getElementById('cam-res-select').value.split('x');
+      const width = parseInt(res[0]);
+      const height = parseInt(res[1]);
+      const fps = parseInt(document.getElementById('cam-fps-select').value);
+      const customUrl = document.getElementById('cam-url-input').value;
+
+      document.getElementById('cam-status-msg').innerText = "Connecting to camera hardware...";
+      document.getElementById('btn-cam-connect').disabled = true;
+
+      fetch(apiUrl('/api/camera/connect'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_id: devId,
+          camera_type: model,
+          width: width,
+          height: height,
+          fps: fps,
+          custom_url: customUrl
+        })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          isCameraConnected = true;
+          document.getElementById('btn-cam-connect').disabled = true;
+          document.getElementById('btn-cam-disconnect').disabled = false;
+
+          const indicator = document.getElementById('cam-status-indicator');
+          indicator.className = 'conn-status-indicator online';
+          document.getElementById('cam-status-msg').innerText = `Online: ${data.message}`;
+
+          // Show viewport
+          const feedImg = document.getElementById('cam-feed-img');
+          feedImg.onload = () => {
+            document.getElementById('cam-offline-ui').style.display = 'none';
+            feedImg.style.display = 'block';
+          };
+          feedImg.onerror = () => {
+            if (isCameraConnected) {
+              setTimeout(() => {
+                if (isCameraConnected) {
+                  feedImg.src = apiUrl(`/api/camera/stream?mode=${activeStreamMode}&t=${Date.now()}`);
+                }
+              }, 400);
+            }
+          };
+          document.getElementById('cam-offline-ui').style.display = 'none';
+          feedImg.style.display = 'block';
+          feedImg.src = apiUrl(`/api/camera/stream?mode=${activeStreamMode}&t=${Date.now()}`);
+          document.getElementById('cam-hud-overlay').style.display = 'flex';
+          document.getElementById('cam-live-dot').style.display = 'inline-block';
+          document.getElementById('cam-live-text').innerText = "LIVE STREAMING";
+          document.getElementById('hud-res-text').innerText = `${width}x${height}`;
+
+          document.getElementById('cam-sum-src').innerText = (model === 'network' ? customUrl : devId);
+
+          if (cameraPollTimer) clearInterval(cameraPollTimer);
+          cameraPollTimer = setInterval(pollCameraStatus, 1000);
+          pollCameraStatus();
+          appendLog(`Camera connected: ${data.message}`);
+        } else {
+          document.getElementById('btn-cam-connect').disabled = false;
+          document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
+          document.getElementById('cam-status-msg').innerText = `Error: ${data.message}`;
+          alert("Camera connection failed: " + data.message);
+        }
+      })
+      .catch(err => {
+        document.getElementById('btn-cam-connect').disabled = false;
+        alert("Network error: " + err);
+      });
+    });
+
+    // Disconnect Camera
+    document.getElementById('btn-cam-disconnect').addEventListener('click', () => {
+      fetch(apiUrl('/api/camera/disconnect'), { method: 'POST' })
+        .then(r => r.json())
+        .then(() => {
+          isCameraConnected = false;
+          if (cameraPollTimer) clearInterval(cameraPollTimer);
+          document.getElementById('btn-cam-connect').disabled = false;
+          document.getElementById('btn-cam-disconnect').disabled = true;
+
+          document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
+          document.getElementById('cam-status-msg').innerText = "Camera Disconnected";
+
+          document.getElementById('cam-feed-img').style.display = 'none';
+          document.getElementById('cam-feed-img').src = '';
+          document.getElementById('cam-offline-ui').style.display = 'flex';
+          document.getElementById('cam-hud-overlay').style.display = 'none';
+          document.getElementById('cam-live-dot').style.display = 'none';
+          document.getElementById('cam-live-text').innerText = "Standby";
+          document.getElementById('cam-sum-fps').innerText = "0.0 FPS";
+          appendLog("Camera disconnected.", "warn");
+        });
+    });
+
+    function pollCameraStatus() {
+      if (!isCameraConnected) return;
+      fetch(apiUrl('/api/camera/status'))
+        .then(r => r.json())
+        .then(data => {
+          if (data.actual_fps !== undefined) {
+            document.getElementById('hud-fps-text').innerText = `${data.actual_fps.toFixed(1)} FPS`;
+            document.getElementById('cam-sum-fps').innerText = `${data.actual_fps.toFixed(1)} FPS`;
+            document.getElementById('cam-sum-drops').innerText = data.dropped_frames || 0;
+          }
+        })
+        .catch(()=>{});
+    }
+
+    // Snapshot Download
+    document.getElementById('btn-cam-snapshot').addEventListener('click', () => {
+      if (!isCameraConnected) {
+        alert("Please connect a camera before capturing snapshots.");
+        return;
+      }
+      const link = document.createElement('a');
+      link.href = apiUrl(`/api/camera/snapshot?mode=${activeStreamMode}&t=${Date.now()}`);
+      link.download = `snapshot_${activeStreamMode}_${Date.now()}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      appendLog(`Captured snapshot in [${activeStreamMode.toUpperCase()}] mode.`);
+    });
+
+    // Crosshair Toggle
+    document.getElementById('btn-cam-crosshair').addEventListener('click', () => {
+      document.getElementById('cam-crosshair').classList.toggle('active');
+    });
+
+    // Fullscreen Viewer
+    document.getElementById('btn-cam-fullscreen').addEventListener('click', () => {
+      const wrap = document.getElementById('cam-viewport-wrap');
+      if (!document.fullscreenElement) {
+        wrap.requestFullscreen().catch(()=>{});
+      } else {
+        document.exitFullscreen().catch(()=>{});
+      }
+    });
+
+    // Tuning Sliders
+    function sendCameraTuning() {
+      const b = parseInt(document.getElementById('cam-brightness').value);
+      const c = parseInt(document.getElementById('cam-contrast').value);
+      document.getElementById('cam-brightness-val').innerText = b;
+      document.getElementById('cam-contrast-val').innerText = c;
+      fetch(apiUrl('/api/camera/settings'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brightness: b, contrast: c })
+      });
+    }
+
+    document.getElementById('cam-brightness').addEventListener('input', sendCameraTuning);
+    document.getElementById('cam-contrast').addEventListener('input', sendCameraTuning);
+
+    document.getElementById('btn-cam-reset-tuning').addEventListener('click', () => {
+      document.getElementById('cam-brightness').value = 50;
+      document.getElementById('cam-contrast').value = 50;
+      sendCameraTuning();
+    });
+
+    // Initial scan of cameras on startup
+    loadCameraDevices();
+
+    // Start WebSocket
+    initWebSocket();
+  </script>
+</body>
+</html>
