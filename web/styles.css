@@ -425,18 +425,22 @@ body.theme-light .btn-outline:hover {
 }
 
 /* CARD 2: QUICK ACTIONS TILES */
-.quick-tiles-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; height: 100%; }
+.quick-tiles-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; height: 100%; }
 .quick-tile {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px; border-radius: 10px; padding: 14px 8px; border: none; cursor: pointer;
+  gap: 6px; border-radius: 10px; padding: 12px 6px; border: none; cursor: pointer;
   color: #fff; transition: all 0.15s ease;
 }
 .quick-tile.blue { background: var(--primary-blue); }
 .quick-tile.blue:hover { background: var(--primary-blue-hover); box-shadow: 0 0 14px rgba(37, 99, 235, 0.4); }
 .quick-tile.purple { background: var(--purple-accent); }
 .quick-tile.purple:hover { background: var(--purple-accent-hover); box-shadow: 0 0 14px rgba(124, 58, 237, 0.4); }
-.quick-tile .title { font-size: 0.88rem; font-weight: 700; }
-.quick-tile .sub { font-size: 0.72rem; opacity: 0.85; }
+.quick-tile.green { background: #059669; }
+.quick-tile.green:hover { background: #10b981; box-shadow: 0 0 14px rgba(16, 185, 129, 0.4); }
+.quick-tile.orange { background: #d97706; }
+.quick-tile.orange:hover { background: #f59e0b; box-shadow: 0 0 14px rgba(245, 158, 11, 0.4); }
+.quick-tile .title { font-size: 0.82rem; font-weight: 700; }
+.quick-tile .sub { font-size: 0.70rem; opacity: 0.85; }
 
 /* CARD 3: ROBOT PREVIEW */
 .robot-preview-box {

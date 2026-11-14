@@ -145,6 +145,12 @@
                 <span class="title">Zero Position</span>
                 <span class="sub">(Calibrate)</span>
               </button>
+
+              <button class="quick-tile green" id="btn-tile-torque" title="Toggle motor electrical power (holding torque)">
+                <span style="font-size:1.4rem;">⚡</span>
+                <span class="title" id="lbl-torque-title">Motors: ON</span>
+                <span class="sub" id="lbl-torque-sub">(Click to Limp)</span>
+              </button>
             </div>
           </div>
 
@@ -1144,6 +1150,8 @@ Loading calibration...
         this.telemetry = { joints: {}, robot_connected: false, online_count: 0, port: "Web Serial (USB)" };
         this.pollInterval = null;
         this.rxBuffer = new Uint8Array(0);
+        this.isBusySending = false;
+        this.hasSeededInitialTargets = false;
       }
 
       calcChecksum(bytes) {
@@ -1176,6 +1184,87 @@ Loading calibration...
         return Math.max(cal.min, Math.min(cal.max, ticks));
       }
 
+      async sendRawPacket(bytes) {
+        if (!this.writer || !this.isConnected) return;
+        const pkt = new Uint8Array(bytes.length + 1);
+        pkt.set(bytes);
+        pkt[bytes.length] = this.calcChecksum(pkt.subarray(0, bytes.length));
+        try {
+          await this.writer.write(pkt);
+        } catch(e) {
+          console.warn("Serial write error:", e);
+        }
+      }
+
+      async sendCommand(actionFn) {
+        // Half-Duplex bus lock: pause polling during command write
+        this.isBusySending = true;
+        try {
+          await actionFn();
+          await new Promise(r => setTimeout(r, 12));
+        } finally {
+          setTimeout(() => { this.isBusySending = false; }, 25);
+        }
+      }
+
+      // Feetech STS3215 SYNC_WRITE (0x83) to Address 40 (Torque Enable)
+      // Broadcast ID 0xFE: all 6 motors power on simultaneously with ZERO response packet collision
+      async syncWriteTorque(enable) {
+        return this.sendCommand(async () => {
+          const val = enable ? 1 : 0;
+          // Length = (L + 1) * N + 4 = (1 + 1) * 6 + 4 = 16 (0x10)
+          const pkt = [0xFF, 0xFF, 0xFE, 16, 0x83, 40, 1];
+          for (let id = 1; id <= 6; id++) {
+            pkt.push(id, val);
+          }
+          await this.sendRawPacket(pkt);
+        });
+      }
+
+      // Feetech STS3215 SYNC_WRITE (0x83) to Address 42 (WritePosEx with Pos, Time, Speed)
+      // Broadcast ID 0xFE: all 6 motors move simultaneously without bus collisions
+      async syncWriteAll(positionsDeg, speedRadS = 1.5) {
+        return this.sendCommand(async () => {
+          // Calculate safe speed in steps/sec (10 .. 3400)
+          const speedTicks = Math.max(10, Math.min(3400, Math.round(speedRadS * 4096 / (2 * Math.PI))));
+          const spdLow = speedTicks & 0xFF;
+          const spdHigh = (speedTicks >> 8) & 0xFF;
+
+          // Length = (L + 1) * N + 4 = (6 + 1) * 6 + 4 = 46 (0x2E)
+          // L = 6 (pos 2B, time 2B = 0, speed 2B)
+          const pkt = [0xFF, 0xFF, 0xFE, 46, 0x83, 42, 6];
+          for (let id = 1; id <= 6; id++) {
+            const name = idToName[id];
+            const deg = (positionsDeg && positionsDeg[name] !== undefined)
+              ? positionsDeg[name]
+              : (this.activeTargets[name] !== undefined ? this.activeTargets[name] : 0.0);
+            this.activeTargets[name] = deg;
+
+            let t = Math.round(this.degToTicks(id, deg));
+            if (t < 0) t += 65536;
+            const posLow = t & 0xFF;
+            const posHigh = (t >> 8) & 0xFF;
+
+            // 6 payload bytes per servo: posLow, posHigh, timeLow(0), timeHigh(0), spdLow, spdHigh
+            pkt.push(id, posLow, posHigh, 0, 0, spdLow, spdHigh);
+          }
+          await this.sendRawPacket(pkt);
+        });
+      }
+
+      async writeGoalPosition(id, deg, speedRadS = 1.5) {
+        const name = idToName[id];
+        if (name) {
+          this.activeTargets[name] = deg;
+        }
+        await this.syncWriteAll(this.activeTargets, speedRadS);
+      }
+
+      async writeAllGoals(positionsDeg, speedRadS = 1.5) {
+        await this.syncWriteTorque(true);
+        await this.syncWriteAll(positionsDeg, speedRadS);
+      }
+
       async connect() {
         if (!('serial' in navigator)) {
           throw new Error("Web Serial API is not supported in this browser. Please open this page in Google Chrome or Microsoft Edge.");
@@ -1184,19 +1273,15 @@ Loading calibration...
         await this.port.open({ baudRate: 1000000 });
         this.writer = this.port.writable.getWriter();
         this.isConnected = true;
+        this.hasSeededInitialTargets = false;
         this.telemetry.robot_connected = true;
         this.telemetry.port = "Web Serial (Direct USB)";
 
         this.readLoop();
         this.telemetry.online_count = 6;
 
-        // CRUCIAL: Enable motor torque and speed on all 6 servos so they can move!
-        await this.setTorque(true);
-        for (let id = 1; id <= 6; id++) {
-          await this.writeSpeed(id, 1.5);
-          await new Promise(r => setTimeout(r, 4));
-        }
-
+        // Auto-energize all 6 motors with broadcast SYNC_WRITE
+        await this.syncWriteTorque(true);
         this.startPolling();
         return true;
       }
@@ -1220,54 +1305,6 @@ Loading calibration...
         this.isConnected = false;
         this.telemetry.robot_connected = false;
         this.telemetry.online_count = 0;
-      }
-
-      async sendPacket(bytes) {
-        if (!this.writer || !this.isConnected) return;
-        const pkt = new Uint8Array(bytes.length + 1);
-        pkt.set(bytes);
-        pkt[bytes.length] = this.calcChecksum(pkt.subarray(0, bytes.length));
-        try {
-          await this.writer.write(pkt);
-        } catch(e) {}
-      }
-
-      async setTorque(enable) {
-        const val = enable ? 1 : 0;
-        for (let id = 1; id <= 6; id++) {
-          await this.sendPacket([0xFF, 0xFF, id, 4, 0x03, 40, val]);
-          await new Promise(r => setTimeout(r, 4));
-        }
-      }
-
-      async writeSpeed(id, speedRadS = 1.5) {
-        const speedTicks = Math.max(10, Math.min(3400, Math.round(speedRadS * 4096 / (2 * Math.PI))));
-        const speedLow = speedTicks & 0xFF;
-        const speedHigh = (speedTicks >> 8) & 0xFF;
-        await this.sendPacket([0xFF, 0xFF, id, 5, 0x03, 46, speedLow, speedHigh]);
-      }
-
-      async writeGoalPosition(id, deg, speedRadS = 1.5) {
-        const ticks = this.degToTicks(id, deg);
-        let t = Math.round(ticks);
-        if (t < 0) t += 65536;
-        const ticksLow = t & 0xFF;
-        const ticksHigh = (t >> 8) & 0xFF;
-
-        // Exact STS3215 goal_position command (addr 42, 2 bytes, length = 5)
-        await this.sendPacket([0xFF, 0xFF, id, 5, 0x03, 42, ticksLow, ticksHigh]);
-      }
-
-      async writeAllGoals(positionsDeg, speedRadS = 1.5) {
-        await this.setTorque(true);
-        for (let id = 1; id <= 6; id++) {
-          const name = idToName[id];
-          if (positionsDeg[name] !== undefined) {
-            this.activeTargets[name] = positionsDeg[name];
-            await this.writeGoalPosition(id, positionsDeg[name], speedRadS);
-            await new Promise(r => setTimeout(r, 6));
-          }
-        }
       }
 
       async readLoop() {
@@ -1340,6 +1377,9 @@ Loading calibration...
             const errDeg = Math.abs(tgtDeg - actDeg);
 
             if (!this.telemetry.joints) this.telemetry.joints = {};
+            if (!this.hasSeededInitialTargets && !this.activeTargets[name]) {
+              this.activeTargets[name] = actDeg;
+            }
             this.telemetry.joints[name] = {
               id: sid,
               name: name,
@@ -1353,15 +1393,18 @@ Loading calibration...
             };
           }
         }
+        if (!this.hasSeededInitialTargets && Object.keys(this.telemetry.joints || {}).length >= 6) {
+          this.hasSeededInitialTargets = true;
+        }
       }
 
       startPolling() {
         this.isPolling = true;
         let currentPollId = 1;
         this.pollInterval = setInterval(async () => {
-          if (!this.isConnected || !this.isPolling) return;
+          if (!this.isConnected || !this.isPolling || this.isBusySending) return;
           try {
-            await this.sendPacket([0xFF, 0xFF, currentPollId, 4, 0x02, 56, 8]);
+            await this.sendRawPacket([0xFF, 0xFF, currentPollId, 4, 0x02, 56, 8]);
             currentPollId = (currentPollId % 6) + 1;
           } catch(e) {}
 
@@ -1881,6 +1924,33 @@ Loading calibration...
         document.getElementById(`slider-${i}`).value = "0.0";
       }
     });
+
+    let isMotorsPowered = true;
+    const btnTileTorque = document.getElementById('btn-tile-torque');
+    if (btnTileTorque) {
+      btnTileTorque.addEventListener('click', async () => {
+        isMotorsPowered = !isMotorsPowered;
+        if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+          await webSerialDriver.syncWriteTorque(isMotorsPowered);
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'torque', enable: isMotorsPowered }));
+        }
+
+        const lblTitle = document.getElementById('lbl-torque-title');
+        const lblSub = document.getElementById('lbl-torque-sub');
+        if (isMotorsPowered) {
+          btnTileTorque.className = 'quick-tile green';
+          if (lblTitle) lblTitle.innerText = 'Motors: ON';
+          if (lblSub) lblSub.innerText = '(Click to Limp)';
+          appendLog("Motor Power: ON (Holding torque active - ready for UI movements).");
+        } else {
+          btnTileTorque.className = 'quick-tile orange';
+          if (lblTitle) lblTitle.innerText = 'Motors: OFF';
+          if (lblSub) lblSub.innerText = '(Click to Lock)';
+          appendLog("Motor Power: OFF (Limp mode - joints can be moved freely by hand).");
+        }
+      });
+    }
 
     // ----------------------------------------------------
     // LIVE DYNAMIC JOINT CONTROL (STREAMING & WHEEL SCROLL - NO 'MOVE' BUTTON NEEDED)
