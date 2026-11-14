@@ -981,44 +981,54 @@ Loading calibration...
           </pre>
         </div>
 
-        <!-- CARD: DOWNLOAD DESKTOP TOOLS & OFFLINE BRIDGES -->
+        <!-- CARD: DOWNLOAD DESKTOP TOOLS & OFFLINE BRIDGES (WINDOWS & LINUX) -->
         <div class="card">
           <div class="card-header">
             <div class="card-title">
-              <span class="icon">💾</span> Downloads &amp; Offline Desktop Tools
+              <span class="icon">💾</span> Downloads &amp; Offline Desktop Tools (Windows &amp; Linux)
             </div>
           </div>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
             <div style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px;">
               <h4 style="font-size:0.9rem; color:#fff; display:flex; align-items:center; gap:8px;">
-                <span>📦</span> Complete Windows Standalone ZIP
+                <span>📦</span> Complete Standalone Desktop Studio (.zip)
               </h4>
               <p style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
-                Download the complete standalone bridge package for Windows. Contains the 1-click launcher, pure Python STS3215 driver, calibrated homing angles, and setup instructions.
+                Contains everything needed to run the full hardware bridge with 3D Depth cameras, local CSV trajectory recording, and random dynamics testing offline on <strong>both Windows and Linux</strong> (zero ROS 2 required).
               </p>
-              <div style="margin-top:auto; padding-top:6px;">
-                <a href="so101_windows_bridge.zip" download="so101_windows_bridge.zip" class="btn btn-success" style="text-decoration:none; display:inline-flex; align-items:center; gap:8px; font-size:0.8rem; font-weight:700;">
-                  ⬇ Download Windows Package (.zip)
+              <div style="margin-top:auto; padding-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+                <a href="so101_studio_desktop.zip" download="so101_studio_desktop.zip" class="btn btn-success" style="text-decoration:none; display:inline-flex; align-items:center; gap:8px; font-size:0.8rem; font-weight:700;">
+                  ⬇ Download Desktop Package (.zip)
                 </a>
               </div>
             </div>
 
             <div style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px;">
               <h4 style="font-size:0.9rem; color:#fff; display:flex; align-items:center; gap:8px;">
-                <span>🪟</span> Individual Script Files
+                <span>🚀</span> 1-Click Launchers (Windows &amp; Linux)
               </h4>
               <p style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
-                Download the lightweight scripts directly to run or integrate with your custom Python robotics pipelines:
+                Download individual platform launchers directly:
               </p>
               <div style="margin-top:auto; display:flex; gap:8px; flex-wrap:wrap; padding-top:6px;">
                 <a href="run_windows.bat" download="run_windows.bat" class="btn btn-primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.76rem;">
-                  ⬇ run_windows.bat
+                  🪟 run_windows.bat
+                </a>
+                <a href="run_linux.sh" download="run_linux.sh" class="btn btn-primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.76rem; background:#0284c7;">
+                  🐧 run_linux.sh
                 </a>
                 <a href="bridge_standalone.py" download="bridge_standalone.py" class="btn btn-outline" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.76rem;">
-                  ⬇ bridge_standalone.py
+                  🐍 bridge_standalone.py
                 </a>
               </div>
             </div>
+          </div>
+
+          <div style="margin-top:14px; background:rgba(0,0,0,0.25); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-size:0.75rem; color:#94a3b8; line-height:1.5;">
+            <strong style="color:#fff; font-size:0.8rem; display:block; margin-bottom:4px;">📖 How to Launch on any PC (Windows &amp; Linux):</strong>
+            • <strong>Windows 10/11:</strong> Extract the downloaded ZIP -> Double-click <code>run_windows.bat</code>. It auto-installs python libraries and launches the studio in your browser.<br>
+            • <strong>Linux (Ubuntu / Mint / Debian):</strong> Extract the ZIP -> Open terminal and run: <code>chmod +x run_linux.sh && ./run_linux.sh</code>.<br>
+            • <strong>In the Webpage:</strong> Leave connection mode set to <strong>Local Bridge</strong> and click <strong>Connect</strong>. All 3D Depth, trajectory recording, and dynamics testing work with full local hardware speed!
           </div>
         </div>
 
@@ -2190,6 +2200,23 @@ Loading calibration...
     function renderTelemetry(data) {
       if (!data.joints) return;
 
+      // Capture live trajectory row if client-side recording is active (Web Serial mode)
+      if (isClientRecording && data.joints) {
+        const now = (Date.now() / 1000).toFixed(3);
+        const r = [
+          now,
+          data.joints.shoulder_pan ? data.joints.shoulder_pan.actual_deg.toFixed(2) : "0.00",
+          data.joints.shoulder_lift ? data.joints.shoulder_lift.actual_deg.toFixed(2) : "0.00",
+          data.joints.elbow_flex ? data.joints.elbow_flex.actual_deg.toFixed(2) : "0.00",
+          data.joints.wrist_flex ? data.joints.wrist_flex.actual_deg.toFixed(2) : "0.00",
+          data.joints.wrist_roll ? data.joints.wrist_roll.actual_deg.toFixed(2) : "0.00",
+          data.joints.gripper ? data.joints.gripper.actual_deg.toFixed(2) : "0.00"
+        ];
+        clientRecordedRows.push(r);
+        const statusText = document.getElementById('rec-status-text');
+        if (statusText) statusText.innerText = `● Recording (${clientRecordedRows.length} frames - Move Arm by Hand)`;
+      }
+
       let totalVolt = 0.0;
       let voltCount = 0;
 
@@ -2244,8 +2271,8 @@ Loading calibration...
     // RANDOM TARGET DYNAMICS TESTING (10 Poses Across Heights)
     // ----------------------------------------------------
     document.getElementById('btn-start-test').addEventListener('click', () => {
-      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-        alert("Robot not connected!");
+      if (!isRobotControlActive()) {
+        alert("Robot not connected! Click Connect first.");
         return;
       }
       isTestRunning = true;
@@ -2366,16 +2393,26 @@ Loading calibration...
     // ----------------------------------------------------
     // RECORDING & DATASET PLAYBACK
     // ----------------------------------------------------
+    let isClientRecording = false;
+    let clientRecordedRows = [];
+
     document.getElementById('btn-rec-start').addEventListener('click', () => {
-      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-        alert("Robot not connected!");
+      if (!isRobotControlActive()) {
+        alert("Robot not connected! Click Connect first.");
         return;
       }
-      ws.send(JSON.stringify({
-        type: 'start_record',
-        prefix: 'manual_lead_through',
-        disable_torque: true
-      }));
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'start_record',
+          prefix: 'manual_lead_through',
+          disable_torque: true
+        }));
+      } else if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+        webSerialDriver.syncWriteTorque(false);
+        isClientRecording = true;
+        clientRecordedRows = [];
+        updateRecordUI(true, "live_recording.csv");
+      }
       appendLog("Torque turned OFF! Arm is limp. Move joints freely by hand to record motion trajectory.");
     });
 
@@ -2383,6 +2420,13 @@ Loading calibration...
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'stop_record' }));
         appendLog("Recording stopped. Trajectory saved to data/raw/.");
+      } else if (isClientRecording) {
+        isClientRecording = false;
+        if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+          webSerialDriver.syncWriteTorque(true);
+        }
+        updateRecordUI(false);
+        appendLog(`Recording stopped (${clientRecordedRows.length} frames). Click Save to download CSV.`);
       }
     });
 
@@ -2391,6 +2435,29 @@ Loading calibration...
         ws.send(JSON.stringify({ type: 'stop_record' }));
         appendLog("Dataset saved to data/raw/.");
         loadDatasetsList();
+      } else if (clientRecordedRows.length > 0) {
+        isClientRecording = false;
+        if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+          webSerialDriver.syncWriteTorque(true);
+        }
+        updateRecordUI(false);
+        let csvContent = "timestamp,shoulder_pan,shoulder_lift,elbow_flex,wrist_flex,wrist_roll,gripper\n";
+        clientRecordedRows.forEach(row => {
+          csvContent += row.join(",") + "\n";
+        });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const fname = `so101_trajectory_${Date.now()}.csv`;
+        a.href = url;
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        appendLog(`Saved & downloaded trajectory dataset: ${fname} (${clientRecordedRows.length} frames)`);
+        clientRecordedRows = [];
+      } else {
+        alert("No recording data captured. Click 'Start Recording' and move the arm first.");
       }
     });
 
@@ -2475,8 +2542,8 @@ Loading calibration...
         alert("No dataset loaded! Please select and load a dataset first.");
         return;
       }
-      if (!robotConnected || !ws || ws.readyState !== WebSocket.OPEN) {
-        alert("Robot not connected!");
+      if (!isRobotControlActive()) {
+        alert("Robot not connected! Click Connect first.");
         return;
       }
 
@@ -2881,11 +2948,10 @@ Loading calibration...
         devWrap.style.display = 'block';
         urlWrap.style.display = 'none';
         badge.className = 'cam-badge-tag rgb';
-        badge.innerText = 'RGB ONLY';
-        depthBtn.disabled = true;
-        sbsBtn.disabled = true;
-        hint.innerText = '• Standard USB webcams stream native RGB in browser. Depth modes require RealSense/Orbbec SDK on local bridge.';
-        if (activeStreamMode !== 'rgb') setStreamMode('rgb');
+        badge.innerText = 'RGB + DEPTH PREVIEW';
+        depthBtn.disabled = false;
+        sbsBtn.disabled = false;
+        hint.innerText = '• Webcams support RGB and False-Color Depth visualization. Hardware 16-bit Depth is provided by RealSense/Orbbec SDK on local bridge.';
       }
     }
 
@@ -2899,6 +2965,7 @@ Loading calibration...
       });
 
       const feedImg = document.getElementById('cam-feed-img');
+      const feedVideo = document.getElementById('cam-feed-video');
       const hudMode = document.getElementById('hud-mode-text');
       const liveBadge = document.getElementById('cam-live-badge');
 
@@ -2906,14 +2973,23 @@ Loading calibration...
         hudMode.innerText = "DEPTH";
         liveBadge.innerText = "Depth Feed";
         liveBadge.className = "cam-badge-tag depth";
+        if (activeMediaStream && feedVideo) {
+          feedVideo.style.filter = "hue-rotate(180deg) saturate(3.5) contrast(1.8) invert(0.15)";
+        }
       } else if (mode === 'side_by_side') {
         hudMode.innerText = "RGB+DEPTH";
         liveBadge.innerText = "RGB + Depth";
         liveBadge.className = "cam-badge-tag realsense";
+        if (activeMediaStream && feedVideo) {
+          feedVideo.style.filter = "contrast(1.3) saturate(1.4)";
+        }
       } else {
         hudMode.innerText = "RGB";
         liveBadge.innerText = "RGB Feed";
         liveBadge.className = "cam-badge-tag rgb";
+        if (activeMediaStream && feedVideo) {
+          feedVideo.style.filter = "none";
+        }
       }
 
       if (isCameraConnected && !activeMediaStream) {

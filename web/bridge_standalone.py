@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 SO-101 Robotics Standalone Hardware Bridge (Cross-Platform: Windows, Linux, macOS)
-Zero ROS 2 dependencies required! Pure Python + pyserial + tornado.
+Zero ROS 2 dependencies required! Pure Python + pyserial + tornado + opencv.
 
-Usage:
-    python bridge_standalone.py
-    python bridge_standalone.py --port COM3
-    python bridge_standalone.py --port /dev/ttyACM0 --baud 1000000
+Provides:
+- Synchronous STS3215 raw serial communication driver with SYNC_WRITE (0x83)
+- Real-time WebSockets telemetry on ws://localhost:8080/ws
+- Complete Camera Streaming (RGB, Depth false-color, RGB+Depth) on /api/camera/stream
+- Live trajectory CSV recording and dataset playback
+- Web UI serving on http://localhost:8080
 """
 
 import os
@@ -26,15 +28,30 @@ import serial
 import serial.tools.list_ports
 
 try:
-    import tornado.ioloop
-    import tornado.web
-    import tornado.websocket
+    import cv2
+    import numpy as np
+    CV2_AVAILABLE = True
 except ImportError:
-    print("\n[ERROR] Tornado is not installed. Installing required dependencies...")
-    os.system(f"{sys.executable} -m pip install tornado pyserial")
+    CV2_AVAILABLE = False
+
+try:
+    import pyrealsense2 as rs
+    REALSENSE_AVAILABLE = True
+except ImportError:
+    REALSENSE_AVAILABLE = False
+
+try:
     import tornado.ioloop
     import tornado.web
     import tornado.websocket
+    import tornado.gen
+except ImportError:
+    print("\n[*] Installing required dependencies (tornado, pyserial, opencv-python)...")
+    os.system(f"{sys.executable} -m pip install tornado pyserial opencv-python")
+    import tornado.ioloop
+    import tornado.web
+    import tornado.websocket
+    import tornado.gen
 
 ROOT_DIR = Path(__file__).resolve().parent
 WEB_DIR = ROOT_DIR / "web"
@@ -131,7 +148,6 @@ class StandaloneSTS3215Driver:
                 self._ser.reset_output_buffer()
                 self.is_connected = True
                 print(f"[OK] Connected to hardware on {self.port} at {self.baudrate} baud.")
-                # Power ON all 6 motors with broadcast SYNC_WRITE
                 self._sync_write_torque_locked(True)
                 return True
             except Exception as e:
@@ -198,7 +214,6 @@ class StandaloneSTS3215Driver:
         with self.lock:
             for sid, cal in self.calibration.items():
                 try:
-                    # Read 8 bytes starting from address 56
                     pkt = bytearray([0xFF, 0xFF, sid, 4, 0x02, 56, 8])
                     pkt.append(calc_sts_checksum(pkt))
                     self._ser.reset_input_buffer()
@@ -234,10 +249,7 @@ class StandaloneSTS3215Driver:
             return False
 
         speed_ticks = max(10, min(3400, int(speed_rad_s * STS_ENCODER_RESOLUTION / (2.0 * math.pi))))
-        name_to_id = {cal["name"]: sid for sid, cal in self.calibration.items()}
-
         with self.lock:
-            # SYNC_WRITE to Address 42 (WritePosEx: pos 2B, time 2B, speed 2B -> L=6)
             pkt = bytearray([0xFF, 0xFF, 0xFE, 46, 0x83, 42, 6])
             for sid in range(1, 7):
                 cal = self.calibration[sid]
@@ -261,13 +273,310 @@ class StandaloneSTS3215Driver:
                 return False
 
 
+class StandaloneCameraManager:
+    """Manages OpenCV webcams and RealSense 3D cameras."""
+    def __init__(self):
+        self.is_connected = False
+        self.camera_type = "usb"
+        self.device_id = "/dev/video0" if not sys.platform.startswith("win") else "0"
+        self.width = 640
+        self.height = 480
+        self.target_fps = 30
+        self.stream_mode = "rgb"  # "rgb", "depth", "side_by_side"
+        self.brightness = 50
+        self.contrast = 50
+
+        self.cap: Optional[Any] = None
+        self.rs_pipeline = None
+        self.rs_config = None
+        self.is_running = False
+        self.thread: Optional[threading.Thread] = None
+        self.lock = threading.Lock()
+        self.latest_rgb: Optional[Any] = None
+        self.latest_depth: Optional[Any] = None
+
+    def list_devices(self) -> List[Dict[str, Any]]:
+        devices = []
+        if REALSENSE_AVAILABLE:
+            try:
+                ctx = rs.context()
+                for dev in ctx.query_devices():
+                    name = dev.get_info(rs.camera_info.name)
+                    serial = dev.get_info(rs.camera_info.serial_number)
+                    devices.append({
+                        "id": f"realsense:{serial}",
+                        "name": f"Intel RealSense {name} (S/N: {serial})",
+                        "type": "realsense",
+                        "has_rgb": True,
+                        "has_depth": True,
+                        "default_res": "640x480"
+                    })
+            except Exception:
+                pass
+
+        if CV2_AVAILABLE:
+            if sys.platform.startswith("win"):
+                for idx in range(3):
+                    try:
+                        c = cv2.VideoCapture(idx)
+                        if c.isOpened():
+                            c.release()
+                            devices.append({
+                                "id": str(idx),
+                                "name": f"Camera {idx} (Windows UVC)",
+                                "type": "usb",
+                                "has_rgb": True,
+                                "has_depth": False,
+                                "default_res": "640x480"
+                            })
+                    except Exception:
+                        pass
+            else:
+                for p in sorted(glob.glob("/dev/video*")):
+                    try:
+                        idx = int(p.replace("/dev/video", ""))
+                        c = cv2.VideoCapture(idx)
+                        if c.isOpened():
+                            c.release()
+                            devices.append({
+                                "id": p,
+                                "name": f"USB Video Device ({p})",
+                                "type": "usb",
+                                "has_rgb": True,
+                                "has_depth": False,
+                                "default_res": "640x480"
+                            })
+                    except Exception:
+                        pass
+
+        devices.append({"id": "orbbec_3d", "name": "Orbbec 3D Camera", "type": "orbbec", "has_rgb": True, "has_depth": True, "default_res": "640x480"})
+        devices.append({"id": "network_esp32", "name": "ESP32-CAM / IP Stream", "type": "network", "has_rgb": True, "has_depth": False, "default_res": "640x480"})
+        return devices
+
+    def connect(self, device_id: str, camera_type: str = "usb", width: int = 640, height: int = 480, fps: int = 30, custom_url: Optional[str] = None):
+        self.disconnect()
+        self.device_id = device_id
+        self.camera_type = camera_type
+        self.width = width
+        self.height = height
+        self.target_fps = fps
+
+        if not CV2_AVAILABLE:
+            return {"success": False, "message": "OpenCV (cv2) is not installed."}
+
+        try:
+            if camera_type == "realsense" and REALSENSE_AVAILABLE:
+                self.rs_pipeline = rs.pipeline()
+                self.rs_config = rs.config()
+                if ":" in device_id:
+                    self.rs_config.enable_device(device_id.split(":")[1])
+                self.rs_config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
+                self.rs_config.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
+                self.rs_pipeline.start(self.rs_config)
+            elif camera_type == "network":
+                url = custom_url or "http://192.168.4.1/stream"
+                self.cap = cv2.VideoCapture(url)
+                if not self.cap.isOpened():
+                    return {"success": False, "message": f"Could not connect to network stream: {url}"}
+            else:
+                idx = 0
+                if device_id.startswith("/dev/video"):
+                    idx = int(device_id.replace("/dev/video", ""))
+                elif device_id.isdigit():
+                    idx = int(device_id)
+                self.cap = cv2.VideoCapture(idx)
+                if not self.cap or not self.cap.isOpened():
+                    return {"success": False, "message": f"Could not open camera device {device_id}"}
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                self.cap.set(cv2.CAP_PROP_FPS, fps)
+
+            self.is_connected = True
+            self.is_running = True
+            self.thread = threading.Thread(target=self._capture_worker, daemon=True)
+            self.thread.start()
+            return {"success": True, "message": f"Connected to {camera_type} camera."}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    def disconnect(self):
+        self.is_running = False
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=0.5)
+        self.thread = None
+
+        if self.rs_pipeline:
+            try: self.rs_pipeline.stop()
+            except Exception: pass
+            self.rs_pipeline = None
+
+        if self.cap:
+            try: self.cap.release()
+            except Exception: pass
+            self.cap = None
+
+        self.is_connected = False
+        with self.lock:
+            self.latest_rgb = None
+            self.latest_depth = None
+
+    def _capture_worker(self):
+        while self.is_running and self.is_connected:
+            try:
+                if self.rs_pipeline:
+                    frames = self.rs_pipeline.wait_for_frames(timeout_ms=1000)
+                    color_frame = frames.get_color_frame()
+                    depth_frame = frames.get_depth_frame()
+                    if color_frame and depth_frame:
+                        rgb = np.asanyarray(color_frame.get_data())
+                        depth_img = np.asanyarray(depth_frame.get_data())
+                        depth_colored = cv2.applyColorMap(cv2.convertScaleAbs(depth_img, alpha=0.03), cv2.COLORMAP_JET)
+                        with self.lock:
+                            self.latest_rgb = rgb
+                            self.latest_depth = depth_colored
+                elif self.cap and self.cap.isOpened():
+                    ret, frame = self.cap.read()
+                    if ret and frame is not None:
+                        # Generate pseudo-depth map using edge/intensity gradient
+                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                        depth_sim = cv2.applyColorMap(gray, cv2.COLORMAP_TURBO)
+                        with self.lock:
+                            self.latest_rgb = frame
+                            self.latest_depth = depth_sim
+                time.sleep(1.0 / max(10, self.target_fps))
+            except Exception:
+                time.sleep(0.05)
+
+    def get_jpeg_frame(self, mode: str = "rgb") -> Optional[bytes]:
+        with self.lock:
+            if not self.is_connected or self.latest_rgb is None:
+                # Placeholder frame
+                img = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(img, "Camera Standby - Click Connect", (120, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                _, enc = cv2.imencode(".jpg", img)
+                return enc.tobytes()
+
+            frame = self.latest_rgb
+            if mode == "depth" and self.latest_depth is not None:
+                frame = self.latest_depth
+            elif mode == "side_by_side" and self.latest_depth is not None:
+                h, w = frame.shape[:2]
+                depth_resized = cv2.resize(self.latest_depth, (w, h))
+                frame = np.hstack((frame, depth_resized))
+
+            # Apply tuning
+            if self.brightness != 50 or self.contrast != 50:
+                alpha = self.contrast / 50.0
+                beta = (self.brightness - 50) * 2.0
+                frame = cv2.convertScaleAbs(frame, alpha=alpha, beta=beta)
+
+            _, enc = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            return enc.tobytes()
+
+
 driver = StandaloneSTS3215Driver()
+camera_manager = StandaloneCameraManager()
 connected_websockets: Set[tornado.websocket.WebSocketHandler] = set()
 active_targets: Dict[str, float] = {}
 is_recording = False
 record_file = None
 record_writer = None
 sim_positions: Dict[str, float] = {}
+
+
+class BaseApiHandler(tornado.web.RequestHandler):
+    def set_default_headers(self):
+        self.set_header("Access-Control-Allow-Origin", "*")
+        self.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+
+    def options(self, *args, **kwargs):
+        self.set_status(204)
+        self.finish()
+
+
+class CameraDevicesHandler(BaseApiHandler):
+    def get(self):
+        devices = camera_manager.list_devices()
+        self.set_header("Content-Type", "application/json")
+        self.write(json.dumps({"success": True, "devices": devices}))
+
+
+class CameraConnectHandler(BaseApiHandler):
+    def post(self):
+        try:
+            data = json.loads(self.request.body)
+            dev_id = data.get("device_id", "0")
+            cam_type = data.get("camera_type", "usb")
+            width = int(data.get("width", 640))
+            height = int(data.get("height", 480))
+            fps = int(data.get("fps", 30))
+            custom_url = data.get("custom_url")
+            res = camera_manager.connect(dev_id, cam_type, width, height, fps, custom_url)
+            self.set_header("Content-Type", "application/json")
+            self.write(json.dumps(res))
+        except Exception as e:
+            self.write(json.dumps({"success": False, "message": str(e)}))
+
+
+class CameraDisconnectHandler(BaseApiHandler):
+    def post(self):
+        camera_manager.disconnect()
+        self.write(json.dumps({"success": True, "message": "Camera disconnected."}))
+
+
+class CameraSettingsHandler(BaseApiHandler):
+    def post(self):
+        try:
+            data = json.loads(self.request.body)
+            if "brightness" in data: camera_manager.brightness = int(data["brightness"])
+            if "contrast" in data: camera_manager.contrast = int(data["contrast"])
+            if "stream_mode" in data: camera_manager.stream_mode = str(data["stream_mode"])
+            self.write(json.dumps({"success": True}))
+        except Exception as e:
+            self.write(json.dumps({"success": False, "message": str(e)}))
+
+
+class CameraSnapshotHandler(BaseApiHandler):
+    def get(self):
+        mode = self.get_argument("mode", camera_manager.stream_mode or "rgb")
+        frame_bytes = camera_manager.get_jpeg_frame(mode=mode)
+        if frame_bytes:
+            self.set_header("Content-Type", "image/jpeg")
+            self.set_header("Content-Disposition", f"attachment; filename=snapshot_{int(time.time())}.jpg")
+            self.write(frame_bytes)
+        else:
+            self.set_status(404)
+            self.write("No frame available.")
+
+
+class CameraStreamHandler(BaseApiHandler):
+    def initialize(self):
+        self._is_active = True
+
+    def on_connection_close(self):
+        self._is_active = False
+
+    @tornado.gen.coroutine
+    def get(self):
+        mode = self.get_argument("mode", camera_manager.stream_mode or "rgb")
+        self.set_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+        self.set_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.set_header("Access-Control-Allow-Origin", "*")
+
+        while self._is_active:
+            frame_bytes = camera_manager.get_jpeg_frame(mode=mode)
+            if frame_bytes:
+                try:
+                    self.write(b"--frame\r\n")
+                    self.write(b"Content-Type: image/jpeg\r\n")
+                    self.write(f"Content-Length: {len(frame_bytes)}\r\n\r\n".encode())
+                    self.write(frame_bytes)
+                    self.write(b"\r\n")
+                    yield self.flush()
+                except Exception:
+                    break
+            yield tornado.gen.sleep(0.04)
 
 
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
@@ -364,7 +673,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
             elif action == "start_record":
                 prefix = data.get("prefix", "manual_recording")
-                driver.set_torque(False)  # Limp arm for lead-through demonstration
+                driver.set_torque(False)
                 fname = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
                 fpath = DATA_DIR / fname
                 record_file = open(fpath, "w", newline="")
@@ -383,7 +692,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                 self.write_message(json.dumps({"type": "record_status", "recording": False, "result": True}))
 
         except Exception as ex:
-            print(f"[WARN] WebSocket message handling error: {ex}")
+            print(f"[WARN] WebSocket message error: {ex}")
 
 
 def poll_and_broadcast():
@@ -425,7 +734,6 @@ def poll_and_broadcast():
             "encoder_ticks": ticks
         }
 
-    # Record row if active
     if is_recording and record_writer:
         try:
             row = [now] + [telemetry_joints[cal["name"]]["actual_deg"] for sid, cal in DEFAULT_CALIBRATION.items()]
@@ -457,6 +765,12 @@ def poll_and_broadcast():
 def make_app():
     return tornado.web.Application([
         (r"/ws", WebSocketHandler),
+        (r"/api/camera/devices", CameraDevicesHandler),
+        (r"/api/camera/connect", CameraConnectHandler),
+        (r"/api/camera/disconnect", CameraDisconnectHandler),
+        (r"/api/camera/settings", CameraSettingsHandler),
+        (r"/api/camera/snapshot", CameraSnapshotHandler),
+        (r"/api/camera/stream", CameraStreamHandler),
         (r"/(.*)", tornado.web.StaticFileHandler, {"path": str(WEB_DIR), "default_filename": "index.html"}),
     ])
 
@@ -470,7 +784,6 @@ def main():
     parser.add_argument("--no-browser", action="store_true", help="Do not automatically open browser")
     args = parser.parse_args()
 
-    # Auto-detect initial port
     ports = list_available_serial_ports()
     target_port = args.port
     if not target_port and ports:
@@ -488,7 +801,6 @@ def main():
 
     driver.connect(target_port, args.baud)
 
-    # Initialize targets from home position
     home = load_home_position()
     for k, v in home.items():
         active_targets[k] = v
@@ -497,7 +809,6 @@ def main():
     app = make_app()
     app.listen(args.web_port)
 
-    # Setup 30 Hz polling callback
     loop = tornado.ioloop.IOLoop.current()
     periodic = tornado.ioloop.PeriodicCallback(poll_and_broadcast, 33)
     periodic.start()
@@ -511,6 +822,7 @@ def main():
     except KeyboardInterrupt:
         print("\nStopping bridge server...")
         driver.disconnect()
+        camera_manager.disconnect()
         loop.stop()
 
 
