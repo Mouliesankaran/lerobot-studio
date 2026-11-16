@@ -345,7 +345,23 @@ body.theme-light .nav-btn:hover {
 /* GRIDS */
 .row-1-grid { display: grid; grid-template-columns: 1.15fr 1fr 1fr 1.05fr; gap: 16px; }
 .row-2-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
-.row-3-grid { display: grid; grid-template-columns: 1.15fr 1.15fr 1.1fr; gap: 16px; }
+.row-3-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1.15fr 1.1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+.row-3-grid > .card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  margin: 0;
+}
+.row-3-grid .log-box {
+  flex: 1;
+  min-height: 200px;
+}
 
 @media (max-width: 1280px) {
   .row-1-grid { grid-template-columns: 1fr 1fr; }
@@ -1060,4 +1076,421 @@ body.theme-light .calib-range-bar-track {
   padding: 14px; margin: 12px 0; overflow-y: auto; flex: 1;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.78rem; line-height: 1.45; color: var(--text-main); white-space: pre-wrap;
+}
+
+/* ========================================================
+   PAGE: TELEOPERATION SUITE (LEROBOT COMPLIANT)
+   ======================================================== */
+.teleop-hud-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.teleop-status-banner {
+  background: var(--card-inner);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.teleop-torque-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  padding: 5px 12px;
+  border-radius: 20px;
+}
+.teleop-torque-badge.on {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success-green);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.teleop-torque-badge.off {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning-amber);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.teleop-step-pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.teleop-step-pill {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  font-size: 0.76rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+.teleop-step-pill.active {
+  background: var(--primary-blue);
+  color: #fff;
+  border-color: var(--primary-blue);
+  font-weight: 700;
+}
+
+.teleop-main-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 16px;
+  margin-top: 14px;
+}
+@media (max-width: 1100px) {
+  .teleop-main-grid { grid-template-columns: 1fr; }
+}
+
+.teleop-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.teleop-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.teleop-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.teleop-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.teleop-table tr.selected {
+  background: rgba(56, 189, 248, 0.08);
+  font-weight: 700;
+}
+.teleop-table tr.selected td:first-child {
+  color: var(--cyan-accent);
+}
+
+.teleop-controls-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.teleop-dpad-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  background: var(--card-inner);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+.dpad-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.dpad-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+.dpad-btn:hover {
+  background: var(--primary-blue);
+  color: #fff;
+  border-color: var(--primary-blue);
+  transform: translateY(-2px);
+}
+.dpad-btn:active {
+  transform: translateY(1px);
+}
+.dpad-center-label {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.key-cheat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  font-size: 0.74rem;
+}
+.key-cheat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.keycap {
+  display: inline-block;
+  padding: 2px 7px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  color: var(--cyan-accent);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+.teleop-comparison-panel {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr 1.3fr;
+  gap: 12px;
+  background: var(--card-inner);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  align-items: center;
+}
+@media (max-width: 900px) {
+  .teleop-comparison-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.teleop-comp-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.teleop-comp-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.teleop-comp-name {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--cyan-accent);
+}
+.teleop-comp-val {
+  font-size: 1.15rem;
+  font-weight: 800;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.teleop-preset-btn {
+  padding: 5px 9px;
+  background: var(--card-inner);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-main);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.teleop-preset-btn:hover {
+  background: var(--primary-blue);
+  color: #fff;
+  border-color: var(--primary-blue);
+}
+.teleop-table-input {
+  width: 68px;
+  padding: 3px 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 0.78rem;
+  font-family: ui-monospace, monospace;
+}
+
+/* ========================================================
+   PAGE: MONITORING OVERVIEW & ENHANCED METRICS
+   ======================================================== */
+.monitor-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+  .monitor-overview-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.monitor-stat-tile {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--card-shadow);
+}
+.monitor-stat-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+.monitor-stat-val { font-size: 1.25rem; font-weight: 800; color: var(--text-main); }
+
+.monitor-range-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+  margin-top: 6px;
+}
+body.theme-light .monitor-range-track {
+  background: #cbd5e1;
+}
+.monitor-range-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-blue), var(--cyan-accent));
+  border-radius: 3px;
+  transition: width 0.1s ease;
+}
+
+/* ========================================================
+   ENHANCED TELEOPERATION CONTROLS & STEPPERS
+   ======================================================== */
+.teleop-speed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--card-inner);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.teleop-speed-pills {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.teleop-speed-pill {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.teleop-speed-pill.active, .teleop-speed-pill:hover {
+  background: var(--primary-blue);
+  color: #fff;
+  border-color: var(--primary-blue);
+}
+.teleop-poses-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+@media (max-width: 900px) {
+  .teleop-poses-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.teleop-pose-btn {
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--card-inner);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.teleop-pose-btn:hover {
+  background: var(--primary-blue);
+  color: #fff;
+  border-color: var(--primary-blue);
+  transform: translateY(-1px);
+}
+.teleop-gripper-panel {
+  background: var(--card-inner);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.teleop-table-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.teleop-stepper-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--card-inner);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.teleop-stepper-btn:hover {
+  background: var(--primary-blue);
+  color: #fff;
+}
+.teleop-go-btn {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--primary-blue);
+  border: none;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.teleop-go-btn:hover {
+  background: var(--primary-hover);
+}
+.teleop-zero-btn {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.70rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.teleop-zero-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
