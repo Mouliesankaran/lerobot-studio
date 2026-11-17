@@ -205,28 +205,65 @@ class CameraManager:
                         "accessible": os.access(p, os.R_OK | os.W_OK)})
         return out
 
-    def _probe_indices(self, max_idx: int = 4) -> List[Dict[str, Any]]:
+    def _windows_device_names(self) -> List[str]:
+        """Query real Windows device names for cameras using PowerShell CIM (Win 10/11 native)."""
+        names: List[str] = []
+        if not IS_WINDOWS:
+            return names
+        try:
+            cmd = ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                   "Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPClass -in @('Camera','Image') } | Select-Object -ExpandProperty Name"]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.5)
+            if res.returncode == 0:
+                for line in res.stdout.splitlines():
+                    l = line.strip()
+                    if l and l not in names:
+                        names.append(l)
+        except Exception:
+            pass
+        return names
+
+    def _probe_indices(self, max_idx: int = 8) -> List[Dict[str, Any]]:
+        win_names = self._windows_device_names()
         out = []
         for idx in range(max_idx):
-            if self.is_connected and self.camera_type == "usb" and str(idx) == str(self.device_id):
-                out.append(self._usb_entry(idx))  # don't re-open the live camera
+            if self.is_connected and self.camera_type in ("usb", "orbbec", "realsense") and str(idx) == str(self.device_id):
+                out.append(self._usb_entry(idx, win_names))
                 continue
             ok = False
-            for be in _cv_backends()[:1]:
+            for be in _cv_backends()[:2]:
                 try:
                     c = cv2.VideoCapture(idx, be)
                     ok = c.isOpened()
                     c.release()
                 except Exception:
                     ok = False
+                if ok:
+                    break
             if ok:
-                out.append(self._usb_entry(idx))
+                out.append(self._usb_entry(idx, win_names))
         return out
 
     @staticmethod
-    def _usb_entry(idx: int) -> Dict[str, Any]:
-        return {"id": str(idx), "name": f"Camera {idx}", "type": "usb", "has_rgb": True,
-                "has_depth": False, "default_res": "640x480"}
+    def _usb_entry(idx: int, win_names: Optional[List[str]] = None) -> Dict[str, Any]:
+        dev_name = f"Camera {idx}"
+        dev_type = "usb"
+        has_depth = False
+        if win_names and idx < len(win_names):
+            raw_name = win_names[idx]
+            low = raw_name.lower()
+            if "orbbec" in low or "femto" in low or "astra" in low:
+                dev_type = "orbbec"
+                has_depth = True
+                dev_name = f"Orbbec 3D: {raw_name} (Camera {idx})"
+            elif "realsense" in low or "intel" in low or "d455" in low or "d435" in low:
+                dev_type = "realsense"
+                has_depth = True
+                dev_name = f"Intel RealSense: {raw_name} (Camera {idx})"
+            else:
+                dev_name = f"{raw_name} (Camera {idx})"
+        return {"id": str(idx), "name": dev_name, "type": dev_type, "has_rgb": True,
+                "has_depth": has_depth, "default_res": "640x480"}
 
     def list_devices(self, force: bool = False) -> List[Dict[str, Any]]:
         now = time.time()

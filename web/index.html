@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>SO-100 / SO-101 Robotic Arm Control &amp; Calibration</title>
   <link rel="icon" type="image/png" href="logo.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
 
@@ -950,10 +953,17 @@ Awaiting calibration generation...
             </div>
 
             <div class="cam-selector-box">
+              <div id="cam-perm-hint" style="font-size:0.73rem; color:var(--cyan-accent); background:rgba(56, 189, 248, 0.08); padding:6px 10px; border-radius:6px; border:1px solid rgba(56, 189, 248, 0.2); margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                <span>📷 <strong>Cross-Platform Vision:</strong> Compatible with Windows, Linux &amp; Render.</span>
+                <button id="btn-cam-request-perm" type="button" class="btn btn-outline" style="font-size:0.7rem; padding:2px 8px; border-color:var(--cyan-accent); color:var(--cyan-accent);">
+                  🔓 Authorize Hardware
+                </button>
+              </div>
+
               <div>
                 <label for="cam-model-select">Camera Technology / Model:</label>
                 <select id="cam-model-select">
-                  <option value="usb">Standard USB / UVC Webcam (V4L2)</option>
+                  <option value="usb">Standard USB / UVC Webcam (DirectShow / V4L2 / WebRTC)</option>
                   <option value="realsense">Intel RealSense (D435 / D415 / D405 / D455)</option>
                   <option value="orbbec">Orbbec 3D (Femto / Astra / Gemini)</option>
                   <option value="network">ESP32-CAM / IP Stream (HTTP MJPEG / RTSP)</option>
@@ -4662,6 +4672,13 @@ Loading calibration...
       loadCameraDevices(true);
     });
 
+    const btnRequestCamPerm = document.getElementById('btn-cam-request-perm');
+    if (btnRequestCamPerm) {
+      btnRequestCamPerm.addEventListener('click', () => {
+        loadCameraDevices(true);
+      });
+    }
+
     function setStreamMode(mode) {
       activeStreamMode = mode;
       document.querySelectorAll('.stream-mode-btn').forEach(btn => {
@@ -4802,7 +4819,15 @@ Loading calibration...
                 : { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } }
             };
 
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            let stream;
+            try {
+              stream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (strictErr) {
+              console.warn("Strict camera constraint failed, attempting universal video stream fallback:", strictErr);
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } }
+              });
+            }
             activeMediaStream = stream;
 
             const feedVideo = document.getElementById('cam-feed-video');
