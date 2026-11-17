@@ -4434,7 +4434,8 @@ Loading calibration...
     // Camera device list = browser-native webcams + bridge-detected devices (USB / RealSense / Orbbec).
     // The list is filtered by the selected camera MODEL so a RealSense/Orbbec model can never be
     // silently opened as a plain webcam (root cause of "Depth not working" on other machines).
-    let camAllDevices = [];   // {id,label,type,depth}
+    let camAllDevices = [];   // Array of {id, label, type, isBrowser, depth}
+    let isRequestingPermission = false;
 
     function renderCameraDeviceOptions() {
       const select = document.getElementById('cam-device-select');
@@ -4442,57 +4443,164 @@ Loading calibration...
       if (!select) return;
       const prev = select.value;
       select.innerHTML = '';
-      const wanted = camAllDevices.filter(d => {
-        if (model === 'realsense') return d.type === 'realsense';
-        if (model === 'orbbec') return d.type === 'orbbec';
-        if (model === 'network') return d.type === 'network';
-        return d.type === 'browser' || d.type === 'usb' || d.type === 'synthetic';
-      });
-      wanted.forEach(d => {
+
+      if (model === 'network') {
         const opt = document.createElement('option');
-        opt.value = d.id;
-        opt.innerText = d.label;
-        opt.setAttribute('data-type', d.type);
-        opt.setAttribute('data-depth', d.depth ? '1' : '0');
+        opt.value = 'network_stream';
+        opt.innerText = 'Network IP Stream (Enter stream URL below)';
+        opt.setAttribute('data-type', 'network');
         select.appendChild(opt);
+        return;
+      }
+
+      // Categorize into recommended matches and other available cameras
+      const primaryMatches = [];
+      const otherCameras = [];
+
+      camAllDevices.forEach(d => {
+        let isMatch = false;
+        const low = (d.label + ' ' + (d.id || '')).toLowerCase();
+        if (model === 'orbbec') {
+          isMatch = (d.type === 'orbbec' || low.includes('orbbec') || low.includes('femto') || low.includes('astra') || low.includes('gemini'));
+        } else if (model === 'realsense') {
+          isMatch = (d.type === 'realsense' || low.includes('realsense') || low.includes('intel') || low.includes('d455') || low.includes('d435') || low.includes('d405'));
+        } else {
+          // Standard USB Webcam
+          isMatch = (d.type === 'usb' || d.type === 'browser' || (!low.includes('orbbec') && !low.includes('realsense')));
+        }
+
+        if (isMatch) primaryMatches.push(d);
+        else otherCameras.push(d);
       });
-      if (wanted.length === 0) {
+
+      // 1. Primary recommended matches at the top
+      if (primaryMatches.length > 0) {
+        const grp = document.createElement('optgroup');
+        grp.label = `Recommended for ${model === 'orbbec' ? 'Orbbec 3D' : (model === 'realsense' ? 'Intel RealSense' : 'Webcam')}`;
+        primaryMatches.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.innerText = `★ ${d.label}`;
+          opt.setAttribute('data-type', d.type);
+          opt.setAttribute('data-browser', d.isBrowser ? '1' : '0');
+          opt.setAttribute('data-depth', d.depth ? '1' : '0');
+          grp.appendChild(opt);
+        });
+        select.appendChild(grp);
+      }
+
+      // 2. Other detected cameras
+      if (otherCameras.length > 0) {
+        const grp = document.createElement('optgroup');
+        grp.label = "Other Detected Cameras";
+        otherCameras.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.innerText = d.label;
+          opt.setAttribute('data-type', d.type);
+          opt.setAttribute('data-browser', d.isBrowser ? '1' : '0');
+          opt.setAttribute('data-depth', d.depth ? '1' : '0');
+          grp.appendChild(opt);
+        });
+        select.appendChild(grp);
+      }
+
+      // 3. Fallback entry if absolutely nothing was pre-enumerated
+      if (select.options.length === 0) {
         const opt = document.createElement('option');
-        opt.value = 'none';
-        opt.setAttribute('data-type', 'none');
-        opt.innerText = (model === 'realsense' || model === 'orbbec')
-          ? `No ${model === 'realsense' ? 'RealSense' : 'Orbbec'} detected (start the bridge, install SDK, check USB 3)`
-          : 'No camera detected';
+        opt.value = 'default';
+        opt.setAttribute('data-type', 'browser');
+        opt.setAttribute('data-browser', '1');
+        opt.innerText = 'Default Camera (Click Connect to activate)';
         select.appendChild(opt);
       }
-      if (prev && Array.from(select.options).some(o => o.value === prev)) select.value = prev;
+
+      // Restore previous selection if still valid, otherwise pick the first option
+      if (prev && Array.from(select.options).some(o => o.value === prev)) {
+        select.value = prev;
+      } else if (select.options.length > 0) {
+        select.selectedIndex = 0;
+      }
     }
 
-    async function loadCameraDevices() {
+    async function loadCameraDevices(promptPermission = false) {
       const select = document.getElementById('cam-device-select');
       if (!select) return;
       camAllDevices = [];
 
+      // If user clicked Scan or requested permission, trigger a quick permission prompt to unlock real device labels
+      if (promptPermission && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !isRequestingPermission) {
+        isRequestingPermission = true;
+        try {
+          const tmpStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          tmpStream.getTracks().forEach(t => t.stop());
+        } catch (e) {
+          console.warn("User declined camera permission prompt or camera busy:", e);
+        }
+        isRequestingPermission = false;
+      }
+
+      // 1. Enumerate Browser WebRTC devices
       if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
           devices.filter(d => d.kind === 'videoinput').forEach((d, idx) => {
-            camAllDevices.push({ id: d.deviceId || 'default', type: 'browser', depth: false,
-              label: (d.label || `Camera ${idx + 1}`) + ' (Browser)' });
+            const rawLabel = d.label || '';
+            const low = rawLabel.toLowerCase();
+            let camType = 'browser';
+            let hasDepth = false;
+            let display = rawLabel || `Camera ${idx + 1}`;
+
+            if (low.includes('orbbec') || low.includes('femto') || low.includes('astra') || low.includes('gemini')) {
+              camType = 'orbbec';
+              hasDepth = true;
+              display = `Orbbec 3D: ${rawLabel || 'Femto Bolt'} (Browser/UVC)`;
+            } else if (low.includes('realsense') || low.includes('d455') || low.includes('d435') || low.includes('d405') || low.includes('intel')) {
+              camType = 'realsense';
+              hasDepth = true;
+              display = `Intel RealSense: ${rawLabel || 'D455'} (Browser/UVC)`;
+            } else if (rawLabel) {
+              display = `${rawLabel} (Browser Webcam)`;
+            } else {
+              display = `Browser Camera ${idx + 1}`;
+            }
+
+            camAllDevices.push({
+              id: d.deviceId || 'default',
+              type: camType,
+              isBrowser: true,
+              depth: hasDepth,
+              label: display
+            });
           });
-        } catch (e) { console.warn("Browser camera enumeration:", e); }
+        } catch (e) {
+          console.warn("Browser camera enumeration error:", e);
+        }
       }
 
+      // 2. Enumerate Local Bridge devices (V4L2 nodes & SDKs)
       try {
         const r = await fetch(apiUrl('/api/camera/devices?refresh=1'));
-        const data = await r.json();
-        (data.devices || []).forEach(d => {
-          camAllDevices.push({ id: d.id, type: d.type, depth: !!d.has_depth, label: `${d.name} (Bridge)` });
-        });
-        const dg = data.diagnostics || {};
-        if (dg.video_access_ok === false) appendLog(dg.hint || "Camera device permission problem on this machine.", "warn");
-        if (dg.opencv === null) appendLog("Bridge has no working OpenCV: " + (dg.opencv_error || "pip install opencv-python numpy"), "warn");
-      } catch (e) { /* bridge not running: browser-only mode */ }
+        if (r.ok) {
+          const data = await r.json();
+          (data.devices || []).forEach(d => {
+            // Dedupe if already represented
+            camAllDevices.push({
+              id: d.id,
+              type: d.type,
+              isBrowser: false,
+              depth: !!d.has_depth,
+              label: `${d.name} (Bridge)`
+            });
+          });
+          const dg = data.diagnostics || {};
+          if (dg.video_access_ok === false) {
+            appendLog(dg.hint || "Camera device permission problem on Linux. Ensure user is in 'video' group.", "warn");
+          }
+        }
+      } catch (e) {
+        // Bridge not running or Render static deployment: browser-native mode active
+      }
 
       renderCameraDeviceOptions();
       updateCameraModelCapabilities();
@@ -4525,7 +4633,7 @@ Loading calibration...
         badge.innerText = 'RGB + 3D DEPTH';
         depthBtn.disabled = false;
         sbsBtn.disabled = false;
-        hint.innerText = '• Intel RealSense streams calibrated high-precision 16-bit Depth and RGB.';
+        hint.innerText = '• Intel RealSense streams calibrated Depth and RGB (Native UVC or SDK).';
       } else if (model === 'orbbec') {
         devWrap.style.display = 'block';
         urlWrap.style.display = 'none';
@@ -4533,7 +4641,7 @@ Loading calibration...
         badge.innerText = 'RGB + 3D DEPTH';
         depthBtn.disabled = false;
         sbsBtn.disabled = false;
-        hint.innerText = '• Orbbec 3D camera streams structured-light / ToF Depth and RGB.';
+        hint.innerText = '• Orbbec 3D camera streams structured-light / ToF Depth and RGB (Native UVC or SDK).';
       } else {
         devWrap.style.display = 'block';
         urlWrap.style.display = 'none';
@@ -4541,12 +4649,18 @@ Loading calibration...
         badge.innerText = 'RGB + PSEUDO-DEPTH';
         depthBtn.disabled = false;
         sbsBtn.disabled = false;
-        hint.innerText = '• Webcams give real RGB only. "Depth" on a webcam is a luminance pseudo-depth preview (not metric). Real depth needs Intel RealSense or Orbbec + the local bridge.';
+        hint.innerText = '• Webcams give real RGB. "Depth" mode renders real-time false-color luminance depth preview.';
       }
     }
 
-    document.getElementById('cam-model-select').addEventListener('change', () => { renderCameraDeviceOptions(); updateCameraModelCapabilities(); });
-    document.getElementById('btn-cam-refresh').addEventListener('click', loadCameraDevices);
+    document.getElementById('cam-model-select').addEventListener('change', () => {
+      renderCameraDeviceOptions();
+      updateCameraModelCapabilities();
+    });
+
+    document.getElementById('btn-cam-refresh').addEventListener('click', () => {
+      loadCameraDevices(true);
+    });
 
     function setStreamMode(mode) {
       activeStreamMode = mode;
@@ -4653,9 +4767,10 @@ Loading calibration...
     document.getElementById('btn-cam-connect').addEventListener('click', async () => {
       const model = document.getElementById('cam-model-select').value;
       const devSelect = document.getElementById('cam-device-select');
-      const devId = devSelect ? devSelect.value : 'default';
-      const devName = devSelect && devSelect.selectedOptions[0] ? devSelect.selectedOptions[0].innerText : "Webcam";
-      const devType = devSelect && devSelect.selectedOptions[0] ? (devSelect.selectedOptions[0].getAttribute('data-type') || 'browser') : 'browser';
+      const selectedOption = devSelect && devSelect.selectedOptions ? devSelect.selectedOptions[0] : null;
+      const devId = selectedOption ? selectedOption.value : 'default';
+      const devName = selectedOption ? selectedOption.innerText.replace(/^[★\s]+/, '') : "Camera";
+      const isBrowserDev = selectedOption ? (selectedOption.getAttribute('data-browser') === '1') : true;
       const res = document.getElementById('cam-res-select').value.split('x');
       const width = parseInt(res[0]) || 640;
       const height = parseInt(res[1]) || 480;
@@ -4677,63 +4792,51 @@ Loading calibration...
         return;
       }
 
-      // MODE 2: Browser-Native Direct Webcam (Works on Windows, Linux, macOS on Render - ZERO BACKEND REQUIRED!)
-      // Only plain webcams selected from the BROWSER list use getUserMedia. RealSense / Orbbec / bridge
-      // devices (any OS: "0", "/dev/videoN", "realsense:SN", "orbbec:N") always go through the bridge.
-      if (devType === 'none') {
-        document.getElementById('btn-cam-connect').disabled = false;
-        document.getElementById('cam-status-msg').innerText = "No camera selected";
-        alert("No camera available for this model. Start the local bridge, plug the camera in, then press Refresh.");
-        return;
-      }
-      if ((model === 'realsense' || model === 'orbbec') && !isBridgeAvailable()) {
-        document.getElementById('btn-cam-connect').disabled = false;
-        document.getElementById('cam-status-msg').innerText = "Local bridge required for depth cameras";
-        alert("RealSense / Orbbec depth needs the local bridge (run_windows.bat or run_linux.sh) because browsers cannot read depth sensors.");
-        return;
-      }
-      if (devType === 'browser' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        try {
-          const constraints = {
-            video: {
-              width: { ideal: width },
-              height: { ideal: height },
-              frameRate: { ideal: fps }
+      // MODE 2: Browser-Native Direct Camera (Works on Render, Linux, Windows, macOS - ZERO BACKEND REQUIRED!)
+      if (isBrowserDev || !isBridgeAvailable() || devId === 'default') {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          try {
+            const constraints = {
+              video: (devId && devId !== 'default' && devId.length > 5)
+                ? { deviceId: { ideal: devId }, width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } }
+                : { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } }
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            activeMediaStream = stream;
+
+            const feedVideo = document.getElementById('cam-feed-video');
+            const feedImg = document.getElementById('cam-feed-img');
+            feedImg.style.display = 'none';
+            feedVideo.style.display = 'block';
+            feedVideo.srcObject = stream;
+            await feedVideo.play();
+
+            setCameraConnectedUI(devName, width, height, fps);
+            appendLog(`Camera connected successfully: ${devName} (${width}x${height} @ ${fps}FPS)`);
+
+            // Re-enumerate to get exact hardware labels
+            loadCameraDevices();
+            return;
+          } catch (webcamErr) {
+            console.warn("Browser camera access error:", webcamErr);
+            const errStr = (webcamErr.message || String(webcamErr)).toLowerCase();
+            let friendly = `Could not open camera in browser: ${webcamErr.message || webcamErr}`;
+            if (errStr.includes('busy') || errStr.includes('not readable') || errStr.includes('trackstarterror') || errStr.includes('could not start')) {
+              friendly += "\n\nTip: The camera device is currently in use by another program (e.g. ffplay, Zoom, or another open tab). Please close ffplay and retry.";
+            } else if (errStr.includes('permission') || errStr.includes('not allowed') || errStr.includes('denied')) {
+              friendly += "\n\nTip: Please click the camera/lock icon in your browser address bar and grant camera permission.";
             }
-          };
-          if (devId && devId !== 'default') {
-            constraints.video.deviceId = { exact: devId };
-          }
-
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          activeMediaStream = stream;
-
-          const feedVideo = document.getElementById('cam-feed-video');
-          const feedImg = document.getElementById('cam-feed-img');
-          feedImg.style.display = 'none';
-          feedVideo.style.display = 'block';
-          feedVideo.srcObject = stream;
-          await feedVideo.play();
-
-          setCameraConnectedUI(devName, width, height, fps);
-          appendLog(`Browser Camera connected: ${devName} (${width}x${height} @ ${fps}FPS)`);
-
-          // Refresh devices to populate full hardware labels now that permission is active
-          loadCameraDevices();
-          return;
-        } catch (webcamErr) {
-          console.warn("Browser direct webcam access did not open:", webcamErr);
-          {
             document.getElementById('btn-cam-connect').disabled = false;
             document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
-            document.getElementById('cam-status-msg').innerText = "Camera Permission Denied or Not Detected";
-            alert("Could not open camera in browser: " + (webcamErr.message || webcamErr) + "\nPlease allow camera permission in Chrome/Edge, or plug in a USB webcam.");
+            document.getElementById('cam-status-msg').innerText = "Camera Access Error";
+            alert(friendly);
             return;
           }
         }
       }
 
-      // MODE 3: Local Python Bridge API Fallback (for RealSense / Orbbec Depth SDKs)
+      // MODE 3: Local Python Bridge API (/api/camera/connect)
       fetch(apiUrl('/api/camera/connect'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4761,17 +4864,57 @@ Loading calibration...
           pollCameraStatus();
           appendLog(`Camera connected via bridge: ${data.message}`);
         } else {
-          document.getElementById('btn-cam-connect').disabled = false;
-          document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
-          document.getElementById('cam-status-msg').innerText = `Error: ${data.message}`;
-          alert("Camera connection failed: " + data.message);
+          // If bridge failed (e.g. camera busy or bridge backend error), try browser direct fallback!
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            appendLog(`Bridge reported: ${data.message}. Attempting browser direct camera fallback...`, "warn");
+            navigator.mediaDevices.getUserMedia({ video: true })
+              .then(stream => {
+                activeMediaStream = stream;
+                const feedVideo = document.getElementById('cam-feed-video');
+                const feedImg = document.getElementById('cam-feed-img');
+                feedImg.style.display = 'none';
+                feedVideo.style.display = 'block';
+                feedVideo.srcObject = stream;
+                feedVideo.play();
+                setCameraConnectedUI(devName, width, height, fps);
+                appendLog(`Direct Browser Camera active (${width}x${height} @ ${fps}FPS)`);
+              })
+              .catch(err => {
+                document.getElementById('btn-cam-connect').disabled = false;
+                document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
+                document.getElementById('cam-status-msg').innerText = `Error: ${data.message}`;
+                alert("Camera connection failed: " + data.message);
+              });
+          } else {
+            document.getElementById('btn-cam-connect').disabled = false;
+            document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
+            document.getElementById('cam-status-msg').innerText = `Error: ${data.message}`;
+            alert("Camera connection failed: " + data.message);
+          }
         }
       })
       .catch(err => {
-        document.getElementById('btn-cam-connect').disabled = false;
-        document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
-        document.getElementById('cam-status-msg').innerText = "Camera Bridge Offline";
-        alert("Camera bridge is not reachable at " + (getBridgeBaseUrl() || window.location.origin) + ".\n\nStart run_windows.bat / run_linux.sh (or the ROS bridge), or use 'Standard USB / UVC Webcam' with a (Browser) device for RGB only.");
+        // Bridge unreachable (e.g. on Render), try browser direct!
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+              activeMediaStream = stream;
+              const feedVideo = document.getElementById('cam-feed-video');
+              const feedImg = document.getElementById('cam-feed-img');
+              feedImg.style.display = 'none';
+              feedVideo.style.display = 'block';
+              feedVideo.srcObject = stream;
+              feedVideo.play();
+              setCameraConnectedUI(devName, width, height, fps);
+              appendLog(`Direct Browser Camera active (${width}x${height} @ ${fps}FPS)`);
+            })
+            .catch(webcamErr => {
+              document.getElementById('btn-cam-connect').disabled = false;
+              document.getElementById('cam-status-indicator').className = 'conn-status-indicator offline';
+              document.getElementById('cam-status-msg').innerText = "Camera Bridge & Browser Stream Offline";
+              alert("Camera bridge is offline and browser direct stream failed: " + webcamErr);
+            });
+        }
       });
     });
 

@@ -184,11 +184,24 @@ class CameraManager:
             except Exception:
                 pass
             low = name.lower()
-            if "realsense" in low or "orbbec" in low:
-                # handled by their own SDK entries; the UVC node would give RGB only
-                name = f"{name} (UVC colour only)"
-            out.append({"id": p, "name": f"{name} ({p})", "type": "usb",
-                        "has_rgb": True, "has_depth": False, "default_res": "640x480",
+            dev_type = "usb"
+            has_depth = False
+            if "orbbec" in low or "femto" in low or "astra" in low:
+                dev_type = "orbbec"
+                if "depth" in low or "video4" in p or "ir" in low:
+                    has_depth = True
+                    name = "Orbbec 3D Depth/IR Stream"
+                else:
+                    name = "Orbbec 3D RGB Stream"
+            elif "realsense" in low or "intel" in low or "d455" in low or "d435" in low:
+                dev_type = "realsense"
+                if "depth" in low or "video10" in p or "video6" in p:
+                    has_depth = True
+                    name = "Intel RealSense RGB/Depth Stream"
+                else:
+                    name = "Intel RealSense RGB Stream"
+            out.append({"id": p, "name": f"{name} ({p})", "type": dev_type,
+                        "has_rgb": True, "has_depth": has_depth, "default_res": "640x480",
                         "accessible": os.access(p, os.R_OK | os.W_OK)})
         return out
 
@@ -276,9 +289,15 @@ class CameraManager:
                                   "Run: pip install opencv-python numpy")
             try:
                 if camera_type == "realsense":
-                    self._open_realsense(device_id, width, height, fps)
+                    if REALSENSE_AVAILABLE:
+                        self._open_realsense(device_id, width, height, fps)
+                    else:
+                        self._open_usb(device_id, width, height, fps)
                 elif camera_type == "orbbec":
-                    self._open_orbbec(device_id)
+                    if ORBBEC_AVAILABLE:
+                        self._open_orbbec(device_id)
+                    else:
+                        self._open_usb(device_id, width, height, fps)
                 elif camera_type == "synthetic":
                     self._synthetic = True
                     self.has_depth_hardware = True
@@ -316,38 +335,47 @@ class CameraManager:
             raise RuntimeError(f"'{device_id}' is not a USB camera id (expected index or /dev/videoN).")
 
         last = "no backend could open the device"
+        fourcc_candidates = [
+            cv2.VideoWriter_fourcc(*"MJPG"),
+            cv2.VideoWriter_fourcc(*"YUYV"),
+            cv2.VideoWriter_fourcc(*"Y16 "),
+            0
+        ]
         for be in _cv_backends():
-            cap = None
-            try:
-                cap = cv2.VideoCapture(idx, be)
-                if not cap.isOpened():
-                    cap.release(); continue
-                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-                cap.set(cv2.CAP_PROP_FPS, fps)
-                ok = False
-                for _ in range(20):          # cameras need a few frames to warm up
-                    ok, frame = cap.read()
-                    if ok and frame is not None:
-                        break
-                    time.sleep(0.1)
-                if not ok:
-                    last = "device opened but delivered no frames (in use by another app?)"
-                    cap.release(); continue
-                self.cap = cap
-                self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or width
-                self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or height
-                with self.lock:
-                    self.latest_rgb = frame
-                return
-            except Exception as e:
-                last = str(e)
-                if cap is not None:
-                    try: cap.release()
-                    except Exception: pass
+            for fcc in fourcc_candidates:
+                cap = None
+                try:
+                    cap = cv2.VideoCapture(idx, be)
+                    if not cap.isOpened():
+                        if cap is not None: cap.release()
+                        continue
+                    if fcc != 0:
+                        cap.set(cv2.CAP_PROP_FOURCC, fcc)
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                    cap.set(cv2.CAP_PROP_FPS, fps)
+                    ok = False
+                    for _ in range(15):          # cameras need a few frames to warm up
+                        ok, frame = cap.read()
+                        if ok and frame is not None:
+                            break
+                        time.sleep(0.08)
+                    if not ok:
+                        last = "device opened but delivered no frames (in use by another app or invalid format)"
+                        cap.release(); continue
+                    self.cap = cap
+                    self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or width
+                    self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or height
+                    with self.lock:
+                        self.latest_rgb = frame
+                    return
+                except Exception as e:
+                    last = str(e)
+                    if cap is not None:
+                        try: cap.release()
+                        except Exception: pass
         raise RuntimeError(f"Could not open camera {device_id}: {last}. Close other apps using the camera "
-                           "(Zoom/Teams/browser tab) and check OS camera privacy settings.")
+                           "(e.g. ffplay, Zoom, browser tabs) and check USB connection.")
 
     def _open_network(self, url):
         url = url or "http://192.168.4.1/stream"
