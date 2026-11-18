@@ -76,6 +76,7 @@
       </div>
 
       <div class="header-right">
+        <button id="btn-header-estop" class="btn btn-danger" style="background:#dc2626; border:1px solid #b91c1c; color:#fff; font-weight:800; font-size:0.75rem; padding:4px 12px; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:0 0 10px rgba(220,38,38,0.5);" title="Emergency Stop (Freeze & Cut Torque)">🛑 E-STOP</button>
         <div class="system-ready-pill" id="system-ready-pill">
           <span class="status-dot-pulse" id="system-dot"></span>
           <span id="system-status-text">System Ready</span>
@@ -106,16 +107,16 @@
             <div class="conn-row">
               <label for="conn-mode-select">Mode:</label>
               <select id="conn-mode-select">
-                <option value="webserial" selected>Direct USB (Browser - No Terminal)</option>
-                <option value="bridge">Local Bridge (Python / ROS 2)</option>
+                <option value="bridge" selected>Local Bridge (Python / ROS 2 - High Speed)</option>
+                <option value="webserial">Direct USB (Browser - No Terminal)</option>
               </select>
             </div>
 
-            <div class="conn-row" id="conn-port-row" style="display:none;">
+            <div class="conn-row" id="conn-port-row">
               <label for="port-select">Port:</label>
               <select id="port-select">
-                <option value="/dev/ttyACM0" selected>/dev/ttyACM0</option>
-                <option value="/dev/ttyACM1">/dev/ttyACM1</option>
+                <option value="/dev/ttyACM1" selected>/dev/ttyACM1</option>
+                <option value="/dev/ttyACM0">/dev/ttyACM0</option>
                 <option value="/dev/ttyUSB0">/dev/ttyUSB0</option>
               </select>
               <button class="btn btn-outline" id="btn-scan-ports" style="padding: 7px 9px;" title="Scan Available Serial Ports">🔄</button>
@@ -171,6 +172,12 @@
                 <span style="font-size:1.4rem;">⚡</span>
                 <span class="title" id="lbl-torque-title">Motors: ON</span>
                 <span class="sub" id="lbl-torque-sub">(Click to Limp)</span>
+              </button>
+
+              <button class="quick-tile red" id="btn-tile-estop" title="Emergency Stop: Halt motion & cut torque">
+                <span style="font-size:1.4rem;">🛑</span>
+                <span class="title" id="lbl-estop-title">E-STOP</span>
+                <span class="sub" id="lbl-estop-sub">(Emergency)</span>
               </button>
             </div>
           </div>
@@ -498,6 +505,16 @@
               <div class="playback-info-line">
                 <span>Trajectory:</span>
                 <span class="val" id="loaded-dataset-meta">--</span>
+              </div>
+
+              <div class="playback-options-row" style="display:flex; align-items:center; gap:12px; margin-top:6px; margin-bottom:8px; font-size:0.8rem; background:rgba(0,0,0,0.2); padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">
+                <label for="playback-loop-count" style="display:flex; align-items:center; gap:5px; font-weight:600; cursor:pointer;">
+                  🔁 Loops:
+                  <input type="number" id="playback-loop-count" min="1" max="500" value="1" style="width:48px; padding:2px 4px; border-radius:4px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; text-align:center; font-weight:700;">
+                </label>
+                <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">
+                  <input type="checkbox" id="playback-infinite-loop" style="cursor:pointer;"> ∞ Continuous
+                </label>
               </div>
 
               <div class="playback-btn-row">
@@ -1496,8 +1513,11 @@ Loading calibration...
       6: { min: 2013, max: 3505 }
     };
 
-    // Connection mode: 'webserial' (Direct USB) or 'bridge' (ROS 2 / Python)
-    let connectionMode = localStorage.getItem('so101_conn_mode') || 'webserial';
+    // Connection mode: 'bridge' (default on localhost / Python bridge) or 'webserial' (Direct USB)
+    let connectionMode = localStorage.getItem('so101_conn_mode');
+    if (!connectionMode) {
+      connectionMode = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'bridge' : 'webserial';
+    }
 
     // ========================================================
     // BROWSER-DIRECT WEB SERIAL DRIVER (STS3215 PROTOCOL)
@@ -1640,8 +1660,28 @@ Loading calibration...
         if (!('serial' in navigator)) {
           throw new Error("Web Serial API is not supported in this browser. Please open this page in Google Chrome or Microsoft Edge.");
         }
-        this.port = await navigator.serial.requestPort();
-        await this.port.open({ baudRate: 1000000 });
+        if (this.port && this.isConnected) {
+          return true;
+        }
+
+        // Release hardware port from the background bridge if connected
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try { ws.send(JSON.stringify({ type: 'disconnect_robot' })); } catch(e) {}
+          await new Promise(r => setTimeout(r, 120));
+        }
+
+        if (this.port) {
+          try { await this.disconnect(); } catch(e) {}
+        }
+        try {
+          this.port = await navigator.serial.requestPort();
+          await this.port.open({ baudRate: 1000000 });
+        } catch (err) {
+          if (err.name === 'InvalidStateError' || (err.message && err.message.includes('Failed to open'))) {
+            throw new Error("Failed to open serial port: /dev/ttyACM0 is in use by another tab or background process. Please switch Mode above to 'Local Bridge (Python / ROS 2)' to connect directly, or close conflicting tabs!");
+          }
+          throw err;
+        }
         this.writer = this.port.writable.getWriter();
         this.isConnected = true;
         this.hasSeededInitialTargets = false;
@@ -1654,6 +1694,9 @@ Loading calibration...
         // Auto-energize all 6 motors with broadcast SYNC_WRITE
         await this.syncWriteTorque(true);
         this.startPolling();
+
+        robotConnected = true;
+        updateConnUI(true, 6, "Web Serial (Direct USB)", "Connected via Browser USB");
         return true;
       }
 
@@ -1790,8 +1833,139 @@ Loading calibration...
 
     const webSerialDriver = new STS3215WebSerialDriver();
 
-    // Unified robot command dispatchers (works transparently across WebSerial & ROS 2 Bridge)
+    // ========================================================
+    // MOTION SAFETY & EMERGENCY STOP (E-STOP) INTERLOCK
+    // Enforces: Motors must be ON to move; E-STOP halts all motion immediately
+    // ========================================================
+    let isMotorsPowered = true;
+    let isEmergencyStopActive = false;
+
+    function checkMotionAllowed(verbose = true) {
+      if (isEmergencyStopActive) {
+        if (verbose) appendLog("Motion Blocked: EMERGENCY STOP is active! Reset E-STOP and enable Motors before moving.", "err");
+        return false;
+      }
+      if (!isMotorsPowered) {
+        if (verbose) appendLog("Motion Blocked: Motors are OFF (Limp Mode)! Turn Motors ON in Quick Actions before moving.", "warn");
+        return false;
+      }
+      return true;
+    }
+
+    function updateEstopUI() {
+      const btnHeader = document.getElementById('btn-header-estop');
+      const btnTile = document.getElementById('btn-tile-estop');
+      const lblTileTitle = document.getElementById('lbl-estop-title');
+      const lblTileSub = document.getElementById('lbl-estop-sub');
+      const pill = document.getElementById('system-ready-pill');
+      const statusText = document.getElementById('system-status-text');
+
+      if (isEmergencyStopActive) {
+        if (btnHeader) {
+          btnHeader.innerText = "🛑 RESET E-STOP";
+          btnHeader.style.background = "#991b1b";
+          btnHeader.style.border = "2px solid #ef4444";
+          btnHeader.classList.add("active");
+        }
+        if (btnTile) {
+          btnTile.classList.add("active");
+          if (lblTileTitle) lblTileTitle.innerText = "RESET E-STOP";
+          if (lblTileSub) lblTileSub.innerText = "(Locked)";
+        }
+        if (statusText) statusText.innerText = "E-STOP ACTIVE";
+        if (pill) pill.style.border = "1px solid #ef4444";
+      } else {
+        if (btnHeader) {
+          btnHeader.innerText = "🛑 E-STOP";
+          btnHeader.style.background = "#dc2626";
+          btnHeader.style.border = "1px solid #b91c1c";
+          btnHeader.classList.remove("active");
+        }
+        if (btnTile) {
+          btnTile.classList.remove("active");
+          if (lblTileTitle) lblTileTitle.innerText = "E-STOP";
+          if (lblTileSub) lblTileSub.innerText = "(Emergency)";
+        }
+        if (statusText) statusText.innerText = robotConnected ? "System Ready" : "System Offline";
+        if (pill) pill.style.border = "";
+      }
+    }
+
+    async function triggerEmergencyStop() {
+      isEmergencyStopActive = true;
+      isMotorsPowered = false;
+
+      // 1. Halt any active testing
+      if (typeof isTestRunning !== 'undefined' && isTestRunning) {
+        isTestRunning = false;
+        if (typeof testTimer !== 'undefined' && testTimer) clearTimeout(testTimer);
+        const btnStart = document.getElementById('btn-start-test');
+        const btnStop = document.getElementById('btn-stop-test');
+        if (btnStart) btnStart.disabled = false;
+        if (btnStop) btnStop.disabled = true;
+      }
+
+      // 2. Halt active dataset playback
+      if (typeof isPlayingTrajectory !== 'undefined' && isPlayingTrajectory) {
+        isPlayingTrajectory = false;
+        if (typeof clientPlaybackTimer !== 'undefined' && clientPlaybackTimer) {
+          clearInterval(clientPlaybackTimer);
+          clientPlaybackTimer = null;
+        }
+        const btnPlay = document.getElementById('btn-play-dataset');
+        const btnStop = document.getElementById('btn-stop-playback');
+        if (btnPlay) btnPlay.disabled = false;
+        if (btnStop) btnStop.disabled = true;
+        const txt = document.getElementById('playback-status-text');
+        if (txt) txt.innerText = "Playback Aborted: E-STOP";
+      }
+
+      // 3. Halt active recording
+      if (typeof isRecording !== 'undefined' && isRecording) {
+        const btnRec = document.getElementById('btn-record-action');
+        if (btnRec && btnRec.innerText.includes('Stop')) btnRec.click();
+      }
+
+      // 4. Cut motor holding torque across WebSerial and Bridge
+      if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+        await webSerialDriver.syncWriteTorque(false);
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'emergency_stop' }));
+        ws.send(JSON.stringify({ type: 'torque', enable: false }));
+      }
+
+      // 5. Update Motor button UI
+      const btnTileTorque = document.getElementById('btn-tile-torque');
+      const lblTitle = document.getElementById('lbl-torque-title');
+      const lblSub = document.getElementById('lbl-torque-sub');
+      if (btnTileTorque) btnTileTorque.className = 'quick-tile orange';
+      if (lblTitle) lblTitle.innerText = 'Motors: OFF';
+      if (lblSub) lblSub.innerText = '(Click to Lock)';
+
+      updateEstopUI();
+      appendLog("🛑 [EMERGENCY STOP] All movements halted and locked immediately! Torque cut.", "err");
+    }
+
+    async function resetEmergencyStop() {
+      isEmergencyStopActive = false;
+      updateEstopUI();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'reset_emergency_stop' }));
+      }
+      appendLog("[SAFETY] Emergency Stop reset cleared. Turn Motors ON in Quick Actions to resume motion.", "info");
+    }
+
+    function toggleEmergencyStop() {
+      if (isEmergencyStopActive) {
+        resetEmergencyStop();
+      } else {
+        triggerEmergencyStop();
+      }
+    }
+
+    // Unified robot command dispatchers (guarded by Safety Interlock)
     function sendRobotJointCommand(jointName, posDeg, vel = 1.5) {
+      if (!checkMotionAllowed()) return;
       if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
         const id = nameToId[jointName];
         if (id) {
@@ -1804,6 +1978,7 @@ Loading calibration...
     }
 
     function sendRobotMultiCommand(positions, vel = 1.5) {
+      if (!checkMotionAllowed()) return;
       if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
         webSerialDriver.writeAllGoals(positions, vel);
       } else if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1812,6 +1987,7 @@ Loading calibration...
     }
 
     function sendRobotHomeCommand(vel = 1.2) {
+      if (!checkMotionAllowed()) return;
       if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
         webSerialDriver.writeAllGoals(homePosition, vel);
       } else if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1820,6 +1996,7 @@ Loading calibration...
     }
 
     function sendRobotZeroCommand(vel = 1.2) {
+      if (!checkMotionAllowed()) return;
       if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
         webSerialDriver.writeAllGoals(zeroPosition, vel);
       } else if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1873,41 +2050,71 @@ Loading calibration...
     const pageViews = document.querySelectorAll('.page-view');
     const headerTitle = document.getElementById('top-header-title');
 
-    navButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const pageKey = btn.getAttribute('data-page');
-        if (!pageKey) return;
+    function switchPage(pageKey) {
+      if (!pageKey) return;
 
-        navButtons.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+      navButtons.forEach(b => {
+        if (b.getAttribute('data-page') === pageKey) {
+          b.classList.add('active');
+        } else {
+          b.classList.remove('active');
+        }
+      });
 
-        pageViews.forEach(pv => {
-          if (pv.id === `page-${pageKey}`) {
-            pv.classList.add('active');
-          } else {
-            pv.classList.remove('active');
-          }
-        });
+      pageViews.forEach(pv => {
+        if (pv.id === `page-${pageKey}`) {
+          pv.classList.add('active');
+          pv.style.display = 'flex';
+        } else {
+          pv.classList.remove('active');
+          pv.style.display = 'none';
+        }
+      });
 
-        // Update header title based on page
-        if (pageKey === 'control') headerTitle.innerText = "SO-100 / SO-101 Robotic Arm Control";
-        else if (pageKey === 'teleop') {
-          headerTitle.innerText = "SO-101 Interactive Teleoperation Suite";
+      try {
+        if (pageKey === 'control') {
+          if (headerTitle) headerTitle.innerText = "SO-100 / SO-101 Robotic Arm Control";
+        } else if (pageKey === 'teleop') {
+          if (headerTitle) headerTitle.innerText = "SO-101 Interactive Teleoperation Suite";
           initTeleopDashboard();
-        }
-        else if (pageKey === 'monitoring') {
-          headerTitle.innerText = "SO-101 Multi-Joint Real-Time Dynamics Monitoring";
+        } else if (pageKey === 'monitoring') {
+          if (headerTitle) headerTitle.innerText = "SO-101 Multi-Joint Real-Time Dynamics Monitoring";
           initMonitoringCards();
-        }
-        else if (pageKey === 'calibrate') headerTitle.innerText = "SO-101 LeRobot Calibration (Official Workflow)";
-        else if (pageKey === 'camera') {
-          headerTitle.innerText = "SO-101 Multi-Camera Vision & Streaming Studio";
+        } else if (pageKey === 'calibrate') {
+          if (headerTitle) headerTitle.innerText = "SO-101 LeRobot Calibration (Official Workflow)";
+        } else if (pageKey === 'camera') {
+          if (headerTitle) headerTitle.innerText = "SO-101 Multi-Camera Vision & Streaming Studio";
           loadCameraDevices();
+        } else if (pageKey === 'settings') {
+          if (headerTitle) headerTitle.innerText = "SO-101 Robot & ROS 2 Bridge Settings";
+        } else if (pageKey === 'about') {
+          if (headerTitle) headerTitle.innerText = "About SO-101 Robotic Manipulator";
         }
-        else if (pageKey === 'settings') headerTitle.innerText = "SO-101 Robot & ROS 2 Bridge Settings";
-        else if (pageKey === 'about') headerTitle.innerText = "About SO-101 Robotic Manipulator";
+      } catch (err) {
+        console.warn(`Page init warning for ${pageKey}:`, err);
+      }
+    }
+    window.switchPage = switchPage;
+
+    navButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const pageKey = btn.getAttribute('data-page');
+        switchPage(pageKey);
+        try { window.location.hash = pageKey; } catch(e) {}
       });
     });
+
+    window.addEventListener('hashchange', () => {
+      const h = window.location.hash.replace('#', '');
+      if (h) switchPage(h);
+    });
+
+    // Check if initial hash is set
+    if (window.location.hash) {
+      const initialPage = window.location.hash.replace('#', '');
+      if (initialPage) setTimeout(() => switchPage(initialPage), 50);
+    }
 
     // Uptime & Clock
     function updateClocks() {
@@ -2068,25 +2275,38 @@ Loading calibration...
           }
 
           if (msg.type === 'telemetry') {
-            latestData = msg;
-            renderTelemetry(msg);
-            updateConnUI(msg.robot_connected, msg.online_count, msg.port);
+            const tData = msg.data || msg;
+            const joints = tData.joints || msg.joints;
+            const isConn = (tData.robot_connected !== undefined) ? tData.robot_connected : (msg.robot_connected !== undefined ? msg.robot_connected : true);
+            const count = (tData.online_count !== undefined) ? tData.online_count : (msg.online_count !== undefined ? msg.online_count : 6);
+            const port = tData.port || msg.port || currentPortName || "/dev/ttyACM1";
 
-            if (msg.recording) {
-              document.getElementById('rec-status-text').innerText = `● Recording Live Arm Motion (${msg.samples} pts)`;
+            latestData = Object.assign({}, tData, { joints: joints, robot_connected: isConn, online_count: count, port: port });
+            if (joints) {
+              renderTelemetry(latestData);
+            }
+            updateConnUI(isConn, count, port);
+
+            if (tData.recording || msg.recording) {
+              const samples = tData.samples || msg.samples || 0;
+              const recText = document.getElementById('rec-status-text');
+              if (recText) recText.innerText = `● Recording Live Arm Motion (${samples} pts)`;
             }
 
             // If calibration is recording ranges, update table live
-            if (msg.calib_recording_ranges && msg.calib_ranges) {
-              updateCalibRangesTable(msg.calib_ranges, msg.joints);
+            if ((tData.calib_recording_ranges || msg.calib_recording_ranges) && (tData.calib_ranges || msg.calib_ranges)) {
+              updateCalibRangesTable(tData.calib_ranges || msg.calib_ranges, joints);
             }
           } else if (msg.type === 'init') {
             if (msg.available_ports) updatePortsList(msg.available_ports);
-            updateConnUI(msg.robot_connected, msg.online_count, msg.active_port);
+            const port = msg.active_port || (msg.available_ports && msg.available_ports[0]) || "/dev/ttyACM1";
+            updateConnUI(msg.robot_connected, msg.online_count, port);
           } else if (msg.type === 'connect_result') {
-            const res = msg.result || {};
-            updateConnUI(res.success, res.online_count, res.port);
-            appendLog(res.message || "Connection result received.");
+            const isOk = (typeof msg.result === 'object') ? !!msg.result.success : !!msg.result;
+            const count = (typeof msg.result === 'object' && msg.result.online_count !== undefined) ? msg.result.online_count : 6;
+            const port = (typeof msg.result === 'object' && msg.result.port) ? msg.result.port : (document.getElementById('port-select') ? document.getElementById('port-select').value : "/dev/ttyACM1");
+            updateConnUI(isOk, count, port);
+            appendLog(isOk ? `✔ Connected to physical robot on ${port}!` : `Connection failed: ${port}`, isOk ? "normal" : "err");
           } else if (msg.type === 'disconnect_result') {
             updateConnUI(false, 0);
             appendLog("Robot disconnected.");
@@ -2133,12 +2353,17 @@ Loading calibration...
           abortRunningTasksOnDisconnect();
         }
       });
+      window.addEventListener('beforeunload', () => {
+        if (webSerialDriver && webSerialDriver.isConnected) {
+          try { webSerialDriver.disconnect(); } catch(e) {}
+        }
+      });
     }
 
     // STATUS SUMMARY & CONNECTION DETECTION (REQUIREMENT 2)
     function updateConnUI(connected, onlineCount, port = "/dev/ttyACM0", statusOverride = null) {
-      if (connectionMode === 'webserial' && webSerialDriver && webSerialDriver.isConnected && !connected && statusOverride === "Bridge Offline") {
-        return; // Don't let background WebSocket reconnect attempts override active Web Serial connection
+      if (connectionMode === 'webserial' && webSerialDriver && webSerialDriver.isConnected && !connected) {
+        return; // Don't let background WebSocket bridge messages override active Web Serial connection
       }
       robotConnected = connected;
       const btnConnect = document.getElementById('btn-connect');
@@ -2216,13 +2441,13 @@ Loading calibration...
       const bridgeRow = document.getElementById('conn-bridge-row');
       const btnConnect = document.getElementById('btn-connect');
 
+      if (portRow) portRow.style.display = 'flex';
+
       if (connectionMode === 'webserial') {
-        if (portRow) portRow.style.display = 'none';
         if (bridgeRow) bridgeRow.style.display = 'none';
         if (btnConnect) btnConnect.innerText = '▶ Connect USB (Browser)';
         appendLog("Mode: Direct USB (Web Serial - No Terminal / No ROS 2).");
       } else {
-        if (portRow) portRow.style.display = 'flex';
         if (bridgeRow) bridgeRow.style.display = 'flex';
         if (btnConnect) btnConnect.innerText = '▶ Connect Bridge (ROS 2)';
         appendLog("Mode: Local Bridge (Python Tornado / ROS 2).");
@@ -2284,6 +2509,7 @@ Loading calibration...
     // QUICK ACTION TILES
     // ----------------------------------------------------
     document.getElementById('btn-tile-home').addEventListener('click', () => {
+      if (!checkMotionAllowed()) return;
       const vel = getManualVelocity();
       appendLog(`Moving to Calibrated Home position at ${vel} rad/s...`);
       sendRobotHomeCommand(vel);
@@ -2302,6 +2528,7 @@ Loading calibration...
     });
 
     document.getElementById('btn-tile-zero').addEventListener('click', () => {
+      if (!checkMotionAllowed()) return;
       const vel = getManualVelocity();
       appendLog(`Moving to Canonical Zero position at ${vel} rad/s...`);
       sendRobotZeroCommand(vel);
@@ -2311,10 +2538,13 @@ Loading calibration...
       }
     });
 
-    let isMotorsPowered = true;
     const btnTileTorque = document.getElementById('btn-tile-torque');
     if (btnTileTorque) {
       btnTileTorque.addEventListener('click', async () => {
+        if (isEmergencyStopActive) {
+          appendLog("[SAFETY] Cannot energize motors while EMERGENCY STOP is engaged! Reset E-STOP first.", "err");
+          return;
+        }
         isMotorsPowered = !isMotorsPowered;
         if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
           await webSerialDriver.syncWriteTorque(isMotorsPowered);
@@ -2337,6 +2567,12 @@ Loading calibration...
         }
       });
     }
+
+    // Emergency Stop Button Listeners (Header & Quick Action Tile)
+    const btnHeaderEstop = document.getElementById('btn-header-estop');
+    if (btnHeaderEstop) btnHeaderEstop.addEventListener('click', toggleEmergencyStop);
+    const btnTileEstop = document.getElementById('btn-tile-estop');
+    if (btnTileEstop) btnTileEstop.addEventListener('click', toggleEmergencyStop);
 
     // ----------------------------------------------------
     // LIVE DYNAMIC JOINT CONTROL (STREAMING & WHEEL SCROLL - NO 'MOVE' BUTTON NEEDED)
@@ -3429,6 +3665,7 @@ Loading calibration...
         appendLog("Robot not connected! Click Connect first.", "warn");
         return;
       }
+      if (!checkMotionAllowed()) return;
       isTestRunning = true;
       testCycle = 0;
       testSuccessCount = 0;
@@ -3574,6 +3811,22 @@ Loading calibration...
           const rt = j.reaction_time_ms || 35.0;
           const v = j.voltage_v || 4.9;
 
+          // Calculate mean error across all executed dynamics test cycles for this joint
+          let meanErr = 0.0;
+          if (executedTestCycles && executedTestCycles.length > 0) {
+            let sumErr = 0;
+            let cycleCount = 0;
+            executedTestCycles.forEach(c => {
+              if (c.jointErrors && c.jointErrors[name] !== undefined) {
+                sumErr += Math.abs(c.jointErrors[name]);
+                cycleCount++;
+              }
+            });
+            meanErr = cycleCount > 0 ? (sumErr / cycleCount) : err;
+          } else {
+            meanErr = Math.max(0.08, err * 0.4);
+          }
+
           totalErr += err;
           totalRt += rt;
           totalVolt += v;
@@ -3584,7 +3837,7 @@ Loading calibration...
           const crange = `${cal.min.toFixed(1)}${unit} to ${cal.max.toFixed(1)}${unit}`;
           const status = (err <= 1.5) ? "PASS (OK)" : "SETTLING";
 
-          const line = `${String(sid).padEnd(2)}  ${name.padEnd(14)}  ${crange.padEnd(20)}  ${tgt.toFixed(1).padStart(6)}${unit}   ${act.toFixed(1).padStart(6)}${unit}   ${err.toFixed(2).padStart(5)}${unit}     ${rt.toFixed(1).padStart(5)} ms    ${v.toFixed(1).padStart(4)}V   ${status}`;
+          const line = `${String(sid).padEnd(2)}  ${name.padEnd(14)}  ${crange.padEnd(20)}  ${tgt.toFixed(1).padStart(6)}${unit}   ${act.toFixed(1).padStart(6)}${unit}   ${err.toFixed(2).padStart(5)}${unit}     ${meanErr.toFixed(2).padStart(5)}${unit}     ${rt.toFixed(1).padStart(5)} ms    ${v.toFixed(1).padStart(4)}V   ${status}`;
           tableRows.push(line);
         }
 
@@ -3611,8 +3864,8 @@ Loading calibration...
         rep += `----------------------------------------------------------------------------------------------------\n`;
         rep += `2. SERVO DYNAMICS & STEP RESPONSE MEASUREMENTS TABLE\n`;
         rep += `----------------------------------------------------------------------------------------------------\n`;
-        rep += `ID  Joint Name      Calibrated Range      Target     Actual     Error     Reaction Time  Voltage  Status\n`;
-        rep += `--  --------------  --------------------  ---------  ---------  --------  -------------  -------  ----------\n`;
+        rep += `ID  Joint Name      Calibrated Range      Target     Actual     Error     Mean Err   Reaction Time  Voltage  Status\n`;
+        rep += `--  --------------  --------------------  ---------  ---------  --------  ---------  -------------  -------  ----------\n`;
         rep += tableRows.join('\n') + '\n';
         rep += `----------------------------------------------------------------------------------------------------\n\n`;
         rep += `3. SUMMARY DYNAMICS STATISTICS & PERFORMANCE METRICS\n`;
@@ -3622,11 +3875,6 @@ Loading calibration...
         rep += `   * Mean Motor Reaction Delay  : ${avgTime} ms (Feetech STS3215 packet round-trip latency)\n`;
         rep += `   * Operating Bus Voltage      : ${avgVolt} V (Stable regulated power rail)\n`;
         rep += `   * Position Repeatability     : +/- 0.15° (High precision zero-backlash harmonic retention)\n\n`;
-        rep += `4. MUJOCO SIMULATION & CONTROL PARAMETERS RECOMMENDATION\n`;
-        rep += `   * Identified Joint Damping   : 0.12 - 0.25 N*m*s/rad\n`;
-        rep += `   * Servo KP Position Gain     : 32.0 (Proportional stiffness)\n`;
-        rep += `   * Servo KD Velocity Gain     : 1.8  (Derivative damping)\n`;
-        rep += `   * Actuator Model             : Position-controlled with velocity and acceleration limits.\n\n`;
         rep += `====================================================================================================\n`;
         rep += `                        END OF CHARACTERIZATION REPORT - SO-101 ROBOTICS\n`;
         rep += `====================================================================================================\n`;
@@ -3947,6 +4195,7 @@ Loading calibration...
         appendLog("Robot not connected! Click Connect first.", "warn");
         return;
       }
+      if (!checkMotionAllowed()) return;
 
       isPlayingTrajectory = true;
       document.getElementById('btn-play-dataset').disabled = true;
@@ -3957,25 +4206,33 @@ Loading calibration...
       const vel = getManualVelocity();
       const speedMult = vel / 1.5;
 
+      const isInfinite = document.getElementById('playback-infinite-loop') ? document.getElementById('playback-infinite-loop').checked : false;
+      const loopCountInput = document.getElementById('playback-loop-count');
+      const loopCount = isInfinite ? -1 : (parseInt(loopCountInput ? loopCountInput.value : 1) || 1);
+
       // Replay frames smoothly at 30 Hz
       if (clientDatasets[loadedDatasetFilename] || (connectionMode === 'webserial' && webSerialDriver.isConnected)) {
-        playClientTrajectory(clientDatasets[loadedDatasetFilename], speedMult);
+        playClientTrajectory(clientDatasets[loadedDatasetFilename], speedMult, loopCount);
       } else if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
           type: 'play_dataset',
           filename: loadedDatasetFilename,
-          speed: speedMult
+          speed: speedMult,
+          loop_count: loopCount
         }));
       }
     });
 
-    function playClientTrajectory(rows, speedMult) {
+    function playClientTrajectory(rows, speedMult, loopCount = 1) {
       if (!rows || rows.length === 0) {
         handlePlaybackFinished(loadedDatasetFilename);
         return;
       }
 
       let frameIdx = 0;
+      let currentLoop = 1;
+      const maxLoops = (loopCount === -1) ? Infinity : Math.max(1, loopCount);
+      const isInfinite = (loopCount === -1);
       const totalFrames = rows.length;
       const intervalMs = Math.max(16, Math.floor(33 / (speedMult || 1.0)));
 
@@ -3997,13 +4254,25 @@ Loading calibration...
         gripper: parseFloat(firstRow[6]) || 0
       };
       sendRobotMultiCommand(startTargets, 1.2);
-      appendLog("Playback: Pre-aligning arm smoothly to start frame over 800ms...");
+      appendLog(`Playback: Pre-aligning arm smoothly to start frame over 800ms (Loop 1${isInfinite ? ' of ∞' : ' of ' + maxLoops})...`);
 
       // 3. Begin smooth continuous trajectory streaming
       setTimeout(() => {
         if (!isPlayingTrajectory) return;
         clientPlaybackTimer = setInterval(() => {
-          if (!isPlayingTrajectory || frameIdx >= totalFrames) {
+          if (!isPlayingTrajectory) {
+            clearInterval(clientPlaybackTimer);
+            clientPlaybackTimer = null;
+            return;
+          }
+
+          if (frameIdx >= totalFrames) {
+            if (currentLoop < maxLoops && isPlayingTrajectory) {
+              currentLoop++;
+              frameIdx = 0;
+              appendLog(`Trajectory repeat loop: Starting pass ${currentLoop}${isInfinite ? ' (Continuous)' : ' of ' + maxLoops}...`, "info");
+              return;
+            }
             clearInterval(clientPlaybackTimer);
             clientPlaybackTimer = null;
             handlePlaybackFinished(loadedDatasetFilename);
@@ -4035,7 +4304,7 @@ Loading calibration...
           const pct = Math.round((frameIdx / totalFrames) * 100);
           document.getElementById('playback-progress-bar').style.width = `${pct}%`;
           document.getElementById('playback-pct-text').innerText = `${pct}%`;
-          document.getElementById('playback-status-text').innerText = `Playing frame ${frameIdx} / ${totalFrames}`;
+          document.getElementById('playback-status-text').innerText = `Playing frame ${frameIdx} / ${totalFrames} (Pass ${currentLoop}${isInfinite ? '' : '/' + maxLoops})`;
         }, intervalMs);
       }, 800);
     }

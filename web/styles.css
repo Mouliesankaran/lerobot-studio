@@ -187,6 +187,9 @@ body.theme-light .sidebar-logo img {
   font-weight: 600;
   width: 100%;
 }
+.nav-btn * {
+  pointer-events: none;
+}
 .nav-btn .icon {
   font-size: 1.25rem;
   transition: transform 0.2s ease;
@@ -458,10 +461,10 @@ body.theme-light .btn-outline:hover {
 }
 
 /* CARD 2: QUICK ACTIONS TILES */
-.quick-tiles-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; height: 100%; }
+.quick-tiles-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; height: 100%; }
 .quick-tile {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px; border-radius: 10px; padding: 12px 6px; border: none; cursor: pointer;
+  gap: 6px; border-radius: 10px; padding: 12px 4px; border: none; cursor: pointer;
   color: #fff; transition: all 0.15s ease;
 }
 .quick-tile.blue { background: var(--primary-blue); }
@@ -472,6 +475,13 @@ body.theme-light .btn-outline:hover {
 .quick-tile.green:hover { background: #10b981; box-shadow: 0 0 14px rgba(16, 185, 129, 0.4); }
 .quick-tile.orange { background: #d97706; }
 .quick-tile.orange:hover { background: #f59e0b; box-shadow: 0 0 14px rgba(245, 158, 11, 0.4); }
+.quick-tile.red { background: #dc2626; border: 1px solid #ef4444; }
+.quick-tile.red:hover { background: #ef4444; box-shadow: 0 0 14px rgba(239, 68, 68, 0.5); }
+.quick-tile.red.active { background: #991b1b; border: 2px solid #f87171; animation: estopPulse 1s infinite alternate; }
+@keyframes estopPulse {
+  0% { box-shadow: 0 0 6px #ef4444; }
+  100% { box-shadow: 0 0 18px #ef4444; }
+}
 .quick-tile .title { font-size: 0.82rem; font-weight: 700; }
 .quick-tile .sub { font-size: 0.70rem; opacity: 0.85; }
 

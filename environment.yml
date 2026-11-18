@@ -1,0 +1,12 @@
+name: so101_studio
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - pyserial>=3.5
+      - tornado>=6.2
+      - opencv-python>=4.5.0
+      - numpy>=1.22.0

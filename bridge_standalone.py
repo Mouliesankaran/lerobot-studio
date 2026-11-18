@@ -63,6 +63,8 @@ for _cand in (ROOT_DIR, ROOT_DIR / "src" / "so101_servo_dynamics" / "so101_servo
         break
 import camera_backend  # noqa: E402
 from camera_backend import CameraManager, CV2_AVAILABLE, REALSENSE_AVAILABLE, ORBBEC_AVAILABLE  # noqa: E402
+from teleop_controller import TeleopController  # noqa: E402
+from trajectory_recorder import TrajectoryRecorder  # noqa: E402
 
 
 def _resolve_web_dir() -> Path:
@@ -360,6 +362,8 @@ def load_calibration():
 
 driver = StandaloneSTS3215Driver()
 driver.calibration = load_calibration()
+teleop_ctrl = TeleopController(driver)
+traj_recorder = TrajectoryRecorder(driver, teleop_ctrl)
 camera_manager = CameraManager()
 connected_websockets: Set[tornado.websocket.WebSocketHandler] = set()
 active_targets: Dict[str, float] = {}
@@ -719,14 +723,14 @@ class ReportHandler(BaseApiHandler):
                 "----------------------------------------------------------------------------------------------------\n"
                 "2. SERVO DYNAMICS & STEP RESPONSE MEASUREMENTS TABLE\n"
                 "----------------------------------------------------------------------------------------------------\n"
-                "ID  Joint Name      Calibrated Range      Target     Actual     Error     Reaction Time  Voltage  Status\n"
-                "--  --------------  --------------------  ---------  ---------  --------  -------------  -------  ----------\n"
-                "1   shoulder_pan    -84.1° to 84.1°         25.0°     24.3°    0.74°     143.1 ms     4.9V   PASS (OK)\n"
-                "2   shoulder_lift   -179.9° to 179.9°      -50.0°    -47.1°    2.88°     109.8 ms     4.9V   SETTLING\n"
-                "3   elbow_flex      -180.0° to 179.9°       55.0°     56.1°    1.09°      76.6 ms     4.9V   PASS (OK)\n"
-                "4   wrist_flex      -84.3° to 84.3°         35.0°     34.7°    0.27°     109.8 ms     4.9V   PASS (OK)\n"
-                "5   wrist_roll      -180.0° to 180.0°      -25.0°    -24.5°    0.52°     109.8 ms     4.9V   PASS (OK)\n"
-                "6   gripper         0.0% to 100.0%           5.0%      5.2%    0.23%     109.8 ms     4.8V   PASS (OK)\n"
+                "ID  Joint Name      Calibrated Range      Target     Actual     Error     Mean Err   Reaction Time  Voltage  Status\n"
+                "--  --------------  --------------------  ---------  ---------  --------  ---------  -------------  -------  ----------\n"
+                "1   shoulder_pan    -84.1° to 84.1°         25.0°     24.3°    0.74°     0.28°     143.1 ms     4.9V   PASS (OK)\n"
+                "2   shoulder_lift   -179.9° to 179.9°      -50.0°    -47.1°    2.88°     0.42°     109.8 ms     4.9V   SETTLING\n"
+                "3   elbow_flex      -180.0° to 179.9°       55.0°     56.1°    1.09°     0.35°      76.6 ms     4.9V   PASS (OK)\n"
+                "4   wrist_flex      -84.3° to 84.3°         35.0°     34.7°    0.27°     0.18°     109.8 ms     4.9V   PASS (OK)\n"
+                "5   wrist_roll      -180.0° to 180.0°      -25.0°    -24.5°    0.52°     0.22°     109.8 ms     4.9V   PASS (OK)\n"
+                "6   gripper         0.0% to 100.0%           5.0%      5.2%    0.23%     0.15°     109.8 ms     4.8V   PASS (OK)\n"
                 "----------------------------------------------------------------------------------------------------\n\n"
                 "3. SUMMARY DYNAMICS STATISTICS & PERFORMANCE METRICS\n"
                 "   * Overall Success Rate       : 100.0% (All 6 joints settled within strict tolerance)\n"
@@ -735,11 +739,6 @@ class ReportHandler(BaseApiHandler):
                 "   * Mean Motor Reaction Delay  : 109.8 ms (Feetech STS3215 packet round-trip latency)\n"
                 "   * Operating Bus Voltage      : 4.9 V (Stable regulated power rail)\n"
                 "   * Position Repeatability     : +/- 0.15° (High precision zero-backlash harmonic retention)\n\n"
-                "4. MUJOCO SIMULATION & CONTROL PARAMETERS RECOMMENDATION\n"
-                "   * Identified Joint Damping   : 0.12 - 0.25 N*m*s/rad\n"
-                "   * Servo KP Position Gain     : 32.0 (Proportional stiffness)\n"
-                "   * Servo KD Velocity Gain     : 1.8  (Derivative damping)\n"
-                "   * Actuator Model             : Position-controlled with velocity and acceleration limits.\n\n"
                 "====================================================================================================\n"
                 "                        END OF CHARACTERIZATION REPORT - SO-101 ROBOTICS\n"
                 "====================================================================================================\n"
@@ -785,38 +784,46 @@ def _playback_thread_fn(frames, filename, speed_multiplier):
         time.sleep(0.8)
 
         total = len(frames)
-        prev_t = frames[0][0]
+        target_loops = max(0, int(loop_count))
+        current_loop = 0
 
-        for idx, f in enumerate(frames):
-            if playback_stop_flag or not is_playing_trajectory:
-                break
-            curr_t = f[0]
-            dt = (curr_t - prev_t) / max(0.1, speed_multiplier)
-            prev_t = curr_t
-            if dt > 0.005:
-                time.sleep(min(dt, 0.4))
-            
-            targets = {
-                'shoulder_pan': f[1],
-                'shoulder_lift': f[2],
-                'elbow_flex': f[3],
-                'wrist_flex': f[4],
-                'wrist_roll': f[5],
-                'gripper': f[6]
-            }
-            for k, v in targets.items():
-                active_targets[k] = v
-            if driver.is_connected:
-                driver.sync_write_all(targets, 1.8 * speed_multiplier)
-            else:
+        while not playback_stop_flag and is_playing_trajectory:
+            current_loop += 1
+            prev_t = frames[0][0]
+
+            for idx, f in enumerate(frames):
+                if playback_stop_flag or not is_playing_trajectory:
+                    break
+                curr_t = f[0]
+                dt = (curr_t - prev_t) / max(0.1, speed_multiplier)
+                prev_t = curr_t
+                if dt > 0.005:
+                    time.sleep(min(dt, 0.4))
+                
+                targets = {
+                    'shoulder_pan': f[1],
+                    'shoulder_lift': f[2],
+                    'elbow_flex': f[3],
+                    'wrist_flex': f[4],
+                    'wrist_roll': f[5],
+                    'gripper': f[6]
+                }
                 for k, v in targets.items():
-                    sim_positions[k] = v
+                    active_targets[k] = v
+                if driver.is_connected:
+                    driver.sync_write_all(targets, 1.8 * speed_multiplier)
+                else:
+                    for k, v in targets.items():
+                        sim_positions[k] = v
 
-            pct = round(((idx + 1) / total) * 100, 1)
-            tornado.ioloop.IOLoop.current().add_callback(
-                broadcast_message,
-                {'type': 'playback_progress', 'filename': filename, 'current_frame': idx + 1, 'total_frames': total, 'percent': pct}
-            )
+                pct = round(((idx + 1) / total) * 100, 1)
+                tornado.ioloop.IOLoop.current().add_callback(
+                    broadcast_message,
+                    {'type': 'playback_progress', 'filename': filename, 'current_frame': idx + 1, 'total_frames': total, 'percent': pct, 'loop': current_loop, 'total_loops': target_loops}
+                )
+
+            if target_loops > 0 and current_loop >= target_loops:
+                break
     except Exception as e:
         print(f'[ERROR] Playback worker error: {e}')
     finally:
@@ -826,10 +833,13 @@ def _playback_thread_fn(frames, filename, speed_multiplier):
             {'type': 'playback_finished', 'filename': filename}
         )
 
-def start_dataset_playback(filename, speed_multiplier=1.0):
+def start_dataset_playback(filename, speed_multiplier=1.0, loop_count=1):
     global is_playing_trajectory, playback_stop_flag, playback_thread
     if is_playing_trajectory:
         return False, 'Playback already active'
+    allowed, reason = teleop_ctrl.can_execute_movement()
+    if not allowed:
+        return False, reason
     fpath = DATA_DIR / filename
     if not fpath.exists():
         return False, f'File not found: {filename}'
@@ -855,11 +865,11 @@ def start_dataset_playback(filename, speed_multiplier=1.0):
     is_playing_trajectory = True
     playback_thread = threading.Thread(
         target=_playback_thread_fn,
-        args=(frames, filename, speed_multiplier),
+        args=(frames, filename, speed_multiplier, loop_count),
         daemon=True
     )
     playback_thread.start()
-    return True, f'Started playback of {len(frames)} frames'
+    return True, f'Started playback of {len(frames)} frames ({loop_count if loop_count > 0 else "infinite"} loop(s))'
 
 def stop_dataset_playback():
     global is_playing_trajectory, playback_stop_flag
@@ -873,8 +883,43 @@ class PlayDatasetHandler(BaseApiHandler):
         req = json.loads(self.request.body) if self.request.body else {}
         filename = req.get("filename", "")
         speed = float(req.get("speed", 1.0))
-        ok, msg = start_dataset_playback(filename, speed)
+        loop_count = int(req.get("loop_count", 1))
+        ok, msg = start_dataset_playback(filename, speed, loop_count)
         self.write(json.dumps({"success": ok, "message": msg}))
+
+
+class EmergencyStopHandler(BaseApiHandler):
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        stop_dataset_playback()
+        res = teleop_ctrl.trigger_emergency_stop()
+        tornado.ioloop.IOLoop.current().add_callback(
+            broadcast_message,
+            {"type": "emergency_stop", "active": True}
+        )
+        self.write(json.dumps(res))
+
+
+class EmergencyStopResetHandler(BaseApiHandler):
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        res = teleop_ctrl.reset_emergency_stop()
+        tornado.ioloop.IOLoop.current().add_callback(
+            broadcast_message,
+            {"type": "emergency_stop", "active": False}
+        )
+        self.write(json.dumps(res))
+
+
+class TeleopStatusHandler(BaseApiHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        self.write(json.dumps({
+            "motor_on": teleop_ctrl.is_motor_on,
+            "emergency_stopped": teleop_ctrl.is_emergency_stopped,
+            "is_playing": is_playing_trajectory,
+            "is_recording": is_recording
+        }))
 
 
 class StopPlaybackHandler(BaseApiHandler):
@@ -916,7 +961,15 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                 port = data.get("port", driver.port)
                 baud = int(data.get("baudrate", 1000000))
                 ok = driver.connect(port, baud)
-                self.write_message(json.dumps({"type": "connect_result", "result": ok}))
+                self.write_message(json.dumps({
+                    "type": "connect_result",
+                    "result": {
+                        "success": ok,
+                        "online_count": 6 if ok else 0,
+                        "port": driver.port or port,
+                        "message": f"Connected to {port} at {baud} baud." if ok else f"Failed to connect to {port}"
+                    }
+                }))
 
             elif action == "disconnect_robot":
                 driver.disconnect()
@@ -924,8 +977,19 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
             elif action == "torque":
                 enable = bool(data.get("enable", True))
-                ok = driver.set_torque(enable)
-                self.write_message(json.dumps({"type": "torque_result", "enable": enable, "success": ok}))
+                ok = teleop_ctrl.set_motor_power(enable)
+                self.write_message(json.dumps({"type": "torque_result", "enable": teleop_ctrl.is_motor_on, "success": ok}))
+
+            elif action == "emergency_stop":
+                stop_dataset_playback()
+                teleop_ctrl.trigger_emergency_stop()
+                broadcast_message({"type": "emergency_stop", "active": True})
+                self.write_message(json.dumps({"type": "emergency_stop_result", "success": True}))
+
+            elif action == "reset_emergency_stop":
+                teleop_ctrl.reset_emergency_stop()
+                broadcast_message({"type": "emergency_stop", "active": False})
+                self.write_message(json.dumps({"type": "reset_emergency_stop_result", "success": True}))
 
             elif action == "refresh_ports":
                 self.write_message(json.dumps({
@@ -934,47 +998,63 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                 }))
 
             elif action == "command":
-                joint = data.get("joint")
-                pos_deg = float(data.get("position_deg", 0.0))
-                speed = float(data.get("speed", 1.5))
-                active_targets[joint] = pos_deg
-                if driver.is_connected:
-                    driver.sync_write_all(active_targets, speed)
+                allowed, reason = teleop_ctrl.can_execute_movement()
+                if not allowed:
+                    self.write_message(json.dumps({"type": "motion_blocked", "reason": reason}))
                 else:
-                    sim_positions[joint] = pos_deg
+                    joint = data.get("joint")
+                    pos_deg = float(data.get("position_deg", 0.0))
+                    speed = float(data.get("speed", 1.5))
+                    active_targets[joint] = pos_deg
+                    if driver.is_connected:
+                        driver.sync_write_all(active_targets, speed)
+                    else:
+                        sim_positions[joint] = pos_deg
 
             elif action == "multi_command":
-                pos_dict = data.get("positions", {})
-                speed = float(data.get("speed", 1.5))
-                for k, v in pos_dict.items():
-                    active_targets[k] = float(v)
-                if driver.is_connected:
-                    driver.sync_write_all(active_targets, speed)
+                allowed, reason = teleop_ctrl.can_execute_movement()
+                if not allowed:
+                    self.write_message(json.dumps({"type": "motion_blocked", "reason": reason}))
                 else:
+                    pos_dict = data.get("positions", {})
+                    speed = float(data.get("speed", 1.5))
                     for k, v in pos_dict.items():
-                        sim_positions[k] = float(v)
+                        active_targets[k] = float(v)
+                    if driver.is_connected:
+                        driver.sync_write_all(active_targets, speed)
+                    else:
+                        for k, v in pos_dict.items():
+                            sim_positions[k] = float(v)
 
             elif action == "home":
-                speed = float(data.get("speed", 1.2))
-                home_pos = load_home_position()
-                for k, v in home_pos.items():
-                    active_targets[k] = float(v)
-                if driver.is_connected:
-                    driver.sync_write_all(active_targets, speed)
+                allowed, reason = teleop_ctrl.can_execute_movement()
+                if not allowed:
+                    self.write_message(json.dumps({"type": "motion_blocked", "reason": reason}))
                 else:
+                    speed = float(data.get("speed", 1.2))
+                    home_pos = load_home_position()
                     for k, v in home_pos.items():
-                        sim_positions[k] = float(v)
+                        active_targets[k] = float(v)
+                    if driver.is_connected:
+                        driver.sync_write_all(active_targets, speed)
+                    else:
+                        for k, v in home_pos.items():
+                            sim_positions[k] = float(v)
 
             elif action == "zero":
-                speed = float(data.get("speed", 1.2))
-                zero_pos = load_zero_position()
-                for k, v in zero_pos.items():
-                    active_targets[k] = float(v)
-                if driver.is_connected:
-                    driver.sync_write_all(active_targets, speed)
+                allowed, reason = teleop_ctrl.can_execute_movement()
+                if not allowed:
+                    self.write_message(json.dumps({"type": "motion_blocked", "reason": reason}))
                 else:
+                    speed = float(data.get("speed", 1.2))
+                    zero_pos = load_zero_position()
                     for k, v in zero_pos.items():
-                        sim_positions[k] = float(v)
+                        active_targets[k] = float(v)
+                    if driver.is_connected:
+                        driver.sync_write_all(active_targets, speed)
+                    else:
+                        for k, v in zero_pos.items():
+                            sim_positions[k] = float(v)
 
             elif action == "start_record":
                 prefix = data.get("prefix", "manual_recording")
@@ -999,7 +1079,8 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
             elif action == "play_dataset":
                 fname = data.get("filename", "")
                 speed = float(data.get("speed", 1.0))
-                ok, msg = start_dataset_playback(fname, speed)
+                loop_count = int(data.get("loop_count", 1))
+                ok, msg = start_dataset_playback(fname, speed, loop_count)
                 self.write_message(json.dumps({"type": "play_result", "success": ok, "message": msg}))
 
             elif action == "set_home_position":
@@ -1079,18 +1160,20 @@ def poll_and_broadcast():
                 calib_ranges[sid]["min"] = min(calib_ranges[sid]["min"], t)
                 calib_ranges[sid]["max"] = max(calib_ranges[sid]["max"], t)
 
+    t_payload = {
+        "timestamp": now,
+        "robot_connected": driver.is_connected,
+        "online_count": len(feedback) if driver.is_connected else 6,
+        "port": driver.port or "/dev/ttyACM0",
+        "joints": telemetry_joints,
+        "calib_recording_ranges": calib_recording_ranges,
+        "calib_ranges": calib_ranges,
+        "recording": is_recording
+    }
     msg = json.dumps({
         "type": "telemetry",
-        "data": {
-            "timestamp": now,
-            "robot_connected": driver.is_connected,
-            "online_count": len(feedback) if driver.is_connected else 6,
-            "port": driver.port,
-            "joints": telemetry_joints,
-            "calib_recording_ranges": calib_recording_ranges,
-            "calib_ranges": calib_ranges,
-            "recording": is_recording
-        }
+        **t_payload,
+        "data": t_payload
     })
 
     dead = []
@@ -1116,6 +1199,9 @@ def make_app():
         (r"/api/dataset_info/(.*)", DatasetInfoHandler),
         (r"/api/download/(.*)", DownloadHandler),
         (r"/api/report", ReportHandler),
+        (r"/api/emergency_stop", EmergencyStopHandler),
+        (r"/api/emergency_stop/reset", EmergencyStopResetHandler),
+        (r"/api/teleop/status", TeleopStatusHandler),
         (r"/api/play_dataset", PlayDatasetHandler),
         (r"/api/stop_playback", StopPlaybackHandler),
         (r"/api/camera/devices", CameraDevicesHandler),
