@@ -475,6 +475,7 @@
 
             <div class="record-btn-row">
               <button class="btn btn-danger" id="btn-rec-start" title="Disable torque & move arm freely by hand">⏺ Start Recording</button>
+              <button class="btn btn-warning" id="btn-rec-pause" disabled title="Pause or Resume Recording">⏸ Pause</button>
               <button class="btn btn-warning" id="btn-rec-stop" disabled>⏹ Stop</button>
               <button class="btn btn-success" id="btn-rec-save">💾 Save</button>
             </div>
@@ -519,6 +520,7 @@
 
               <div class="playback-btn-row">
                 <button class="btn btn-success" id="btn-play-dataset" disabled>▶ Run / Play</button>
+                <button class="btn btn-warning" id="btn-pause-playback" disabled title="Pause or Resume Playback">⏸ Pause</button>
                 <button class="btn btn-danger" id="btn-stop-playback" disabled>⏹ Stop Play</button>
               </div>
 
@@ -1294,6 +1296,7 @@ Awaiting calibration generation...
             <div class="card-title">
               <span class="icon">📄</span> Active Calibration File (so101_calibration.json)
             </div>
+            <button class="btn btn-outline" id="btn-settings-reload-calib" style="padding:4px 10px; font-size:0.72rem;">🔄 Reload Calibration</button>
           </div>
           <pre id="settings-calib-view" style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-family:monospace; font-size:0.75rem; color:#cbd5e1; max-height:260px; overflow-y:auto;">
 Loading calibration...
@@ -2010,6 +2013,7 @@ Loading calibration...
     let startTime = Date.now();
     let loadedDatasetFilename = "";
     let isPlayingTrajectory = false;
+    let isPlaybackPaused = false;
 
     // Generated Calibration State
     let generatedCalibration = null;
@@ -2836,7 +2840,7 @@ Loading calibration...
       prevJointTime = now;
 
       // Capture live trajectory row if client-side recording is active (Web Serial mode)
-      if (isClientRecording && data.joints) {
+      if (isClientRecording && !isClientRecordingPaused && data.joints) {
         const timeSec = (now / 1000).toFixed(3);
         const r = [
           timeSec,
@@ -3943,6 +3947,7 @@ Loading calibration...
     // MOVEMENT & RECORDING (NO AUTOMATIC ASKING - EXPLICIT SAVE ONLY)
     // ----------------------------------------------------
     let isClientRecording = false;
+    let isClientRecordingPaused = false;
     let clientRecordedRows = [];
     let clientPlaybackTimer = null;
     let lastRecordedDatasetName = null;
@@ -3953,6 +3958,7 @@ Loading calibration...
         return;
       }
       isClientRecording = true;
+      isClientRecordingPaused = false;
       clientRecordedRows = [];
       if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
         webSerialDriver.syncWriteTorque(false);
@@ -3967,7 +3973,37 @@ Loading calibration...
       appendLog("Torque turned OFF! Arm is limp. Move joints freely by hand to record motion trajectory.");
     });
 
+    document.getElementById('btn-rec-pause').addEventListener('click', () => {
+      if (!isClientRecording) return;
+      isClientRecordingPaused = !isClientRecordingPaused;
+      const btnPause = document.getElementById('btn-rec-pause');
+      const statusText = document.getElementById('rec-status-text');
+
+      if (isClientRecordingPaused) {
+        if (btnPause) {
+          btnPause.innerText = '▶ Resume';
+          btnPause.className = 'btn btn-primary';
+        }
+        if (statusText) {
+          statusText.style.color = "var(--warning-amber)";
+          statusText.innerText = `⏸ Paused (${clientRecordedRows.length} frames - Click Resume)`;
+        }
+        appendLog(`Recording paused (${clientRecordedRows.length} frames captured so far).`);
+      } else {
+        if (btnPause) {
+          btnPause.innerText = '⏸ Pause';
+          btnPause.className = 'btn btn-warning';
+        }
+        if (statusText) {
+          statusText.style.color = "var(--danger-red)";
+          statusText.innerText = `● Recording (${clientRecordedRows.length} frames - Move Arm by Hand)`;
+        }
+        appendLog("Recording resumed.");
+      }
+    });
+
     document.getElementById('btn-rec-stop').addEventListener('click', () => {
+      isClientRecordingPaused = false;
       if (isClientRecording) {
         isClientRecording = false;
         if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
@@ -4065,16 +4101,27 @@ Loading calibration...
 
     function updateRecordUI(recording) {
       const btnStart = document.getElementById('btn-rec-start');
+      const btnPause = document.getElementById('btn-rec-pause');
       const btnStop = document.getElementById('btn-rec-stop');
       const statusText = document.getElementById('rec-status-text');
 
       if (recording) {
         btnStart.disabled = true;
+        if (btnPause) {
+          btnPause.disabled = false;
+          btnPause.innerText = '⏸ Pause';
+          btnPause.className = 'btn btn-warning';
+        }
         btnStop.disabled = false;
         statusText.style.color = "var(--danger-red)";
         statusText.innerText = `● Recording (Torque OFF - Move Arm by Hand)`;
       } else {
         btnStart.disabled = false;
+        if (btnPause) {
+          btnPause.disabled = true;
+          btnPause.innerText = '⏸ Pause';
+          btnPause.className = 'btn btn-warning';
+        }
         btnStop.disabled = true;
         statusText.style.color = "#fff";
         statusText.innerText = "Not Recording";
@@ -4198,7 +4245,14 @@ Loading calibration...
       if (!checkMotionAllowed()) return;
 
       isPlayingTrajectory = true;
+      isPlaybackPaused = false;
       document.getElementById('btn-play-dataset').disabled = true;
+      const btnPausePlay = document.getElementById('btn-pause-playback');
+      if (btnPausePlay) {
+        btnPausePlay.disabled = false;
+        btnPausePlay.innerText = '⏸ Pause';
+        btnPausePlay.className = 'btn btn-warning';
+      }
       document.getElementById('btn-stop-playback').disabled = false;
       document.getElementById('playback-status-text').innerText = `Playing ${loadedDatasetFilename}...`;
       appendLog(`Starting trajectory playback of ${loadedDatasetFilename} on physical robot...`);
@@ -4220,6 +4274,33 @@ Loading calibration...
           speed: speedMult,
           loop_count: loopCount
         }));
+      }
+    });
+
+    document.getElementById('btn-pause-playback').addEventListener('click', () => {
+      if (!isPlayingTrajectory) return;
+      isPlaybackPaused = !isPlaybackPaused;
+      const btn = document.getElementById('btn-pause-playback');
+      const statusText = document.getElementById('playback-status-text');
+
+      if (isPlaybackPaused) {
+        if (btn) {
+          btn.innerText = '▶ Resume';
+          btn.className = 'btn btn-primary';
+        }
+        if (statusText) statusText.innerText = `⏸ Playback Paused (Click Resume to continue)`;
+        appendLog("Playback paused.");
+      } else {
+        if (btn) {
+          btn.innerText = '⏸ Pause';
+          btn.className = 'btn btn-warning';
+        }
+        if (statusText) statusText.innerText = `Resuming playback...`;
+        appendLog("Playback resumed.");
+      }
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'pause_playback' }));
       }
     });
 
@@ -4265,6 +4346,7 @@ Loading calibration...
             clientPlaybackTimer = null;
             return;
           }
+          if (isPlaybackPaused) return;
 
           if (frameIdx >= totalFrames) {
             if (currentLoop < maxLoops && isPlayingTrajectory) {
@@ -4311,6 +4393,13 @@ Loading calibration...
 
     document.getElementById('btn-stop-playback').addEventListener('click', () => {
       isPlayingTrajectory = false;
+      isPlaybackPaused = false;
+      const btnPausePlay = document.getElementById('btn-pause-playback');
+      if (btnPausePlay) {
+        btnPausePlay.disabled = true;
+        btnPausePlay.innerText = '⏸ Pause';
+        btnPausePlay.className = 'btn btn-warning';
+      }
       if (clientPlaybackTimer) {
         clearInterval(clientPlaybackTimer);
         clientPlaybackTimer = null;
@@ -4334,6 +4423,13 @@ Loading calibration...
 
     function handlePlaybackFinished(filename) {
       isPlayingTrajectory = false;
+      isPlaybackPaused = false;
+      const btnPausePlay = document.getElementById('btn-pause-playback');
+      if (btnPausePlay) {
+        btnPausePlay.disabled = true;
+        btnPausePlay.innerText = '⏸ Pause';
+        btnPausePlay.className = 'btn btn-warning';
+      }
       document.getElementById('btn-play-dataset').disabled = false;
       document.getElementById('btn-stop-playback').disabled = true;
       document.getElementById('playback-status-text').innerText = `Playback finished!`;
@@ -4624,10 +4720,21 @@ Loading calibration...
         });
     }
 
-    document.getElementById('btn-calib-reload').addEventListener('click', () => {
-      loadSettingsCalibration();
-      alert("Reloaded active calibration from so101_calibration.json");
-    });
+    const btnCalibReload = document.getElementById('btn-calib-reload');
+    if (btnCalibReload) {
+      btnCalibReload.addEventListener('click', () => {
+        loadSettingsCalibration();
+        appendLog("Reloaded active calibration from so101_calibration.json");
+      });
+    }
+
+    const btnSettingsReload = document.getElementById('btn-settings-reload-calib');
+    if (btnSettingsReload) {
+      btnSettingsReload.addEventListener('click', () => {
+        loadSettingsCalibration();
+        appendLog("Reloaded active calibration from so101_calibration.json");
+      });
+    }
 
     // ========================================================
     // UI APPEARANCE & THEME CUSTOMIZATION (REQUIREMENT 1)
@@ -5319,6 +5426,9 @@ Loading calibration...
 
     // Initial scan of cameras on startup
     loadCameraDevices();
+
+    // Initial load of active calibration
+    loadSettingsCalibration();
 
     // Start WebSocket
     initWebSocket();
