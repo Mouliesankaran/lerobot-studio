@@ -635,6 +635,20 @@ class CalibrateHandler(BaseApiHandler):
                     calib_data[c["name"]] = c
                 self.write(json.dumps({"success": True, "calibration": calib_data}))
 
+            elif action == "upload_external" or "calibration" in req:
+                calib_payload = req.get("calibration") if "calibration" in req else req
+                if isinstance(calib_payload, dict) and "action" in calib_payload:
+                    calib_payload = {k: v for k, v in calib_payload.items() if k != "action"}
+                calib_file = ROOT_DIR / "so101_calibration.json"
+                with open(calib_file, "w", encoding="utf-8") as f:
+                    json.dump(calib_payload, f, indent=2)
+                driver.calibration = load_calibration()
+                self.write(json.dumps({
+                    "success": True,
+                    "calibration": driver.calibration,
+                    "message": "External calibration saved and applied to robot."
+                }))
+
             else:
                 self.write(json.dumps({"success": False, "message": f"Unknown action: {action}"}))
 

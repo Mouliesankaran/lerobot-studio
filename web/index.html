@@ -8,7 +8,40 @@
   <meta http-equiv="Expires" content="0">
   <title>SO-100 / SO-101 Robotic Arm Control &amp; Calibration</title>
   <link rel="icon" type="image/png" href="logo.png">
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=20">
+  <style>
+    .quick-tiles-grid {
+      display: grid !important;
+      grid-template-columns: repeat(4, 1fr) !important;
+      gap: 8px !important;
+    }
+    .quick-tile.red, #btn-tile-estop {
+      background: #dc2626 !important;
+      background-color: #dc2626 !important;
+      border: 1px solid #ef4444 !important;
+      color: #ffffff !important;
+      box-shadow: 0 2px 10px rgba(220, 38, 38, 0.45) !important;
+    }
+    .quick-tile.red:hover, #btn-tile-estop:hover {
+      background: #b91c1c !important;
+      background-color: #b91c1c !important;
+      box-shadow: 0 0 16px rgba(239, 68, 68, 0.65) !important;
+    }
+    .quick-tile.red.active, #btn-tile-estop.active {
+      background: #991b1b !important;
+      background-color: #991b1b !important;
+      border: 2px solid #f87171 !important;
+    }
+    .quick-tile.red *, #btn-tile-estop * {
+      color: #ffffff !important;
+    }
+    .log-box, #log-box-container {
+      height: 180px !important;
+      max-height: 180px !important;
+      overflow-y: auto !important;
+      scroll-behavior: smooth !important;
+    }
+  </style>
 </head>
 <body>
 
@@ -155,7 +188,7 @@
               </div>
             </div>
 
-            <div class="quick-tiles-grid">
+            <div class="quick-tiles-grid" style="display:grid !important; grid-template-columns:repeat(4, 1fr) !important; gap:8px !important;">
               <button class="quick-tile blue" id="btn-tile-home">
                 <span style="font-size:1.4rem;">🏠</span>
                 <span class="title">Home</span>
@@ -174,10 +207,10 @@
                 <span class="sub" id="lbl-torque-sub">(Click to Limp)</span>
               </button>
 
-              <button class="quick-tile red" id="btn-tile-estop" title="Emergency Stop: Halt motion & cut torque">
+              <button class="quick-tile red" id="btn-tile-estop" style="background:#dc2626 !important; background-color:#dc2626 !important; border:1px solid #ef4444 !important; color:#ffffff !important; box-shadow:0 2px 10px rgba(220, 38, 38, 0.45) !important;" title="Emergency Stop: Halt motion & cut torque">
                 <span style="font-size:1.4rem;">🛑</span>
-                <span class="title" id="lbl-estop-title">E-STOP</span>
-                <span class="sub" id="lbl-estop-sub">(Emergency)</span>
+                <span class="title" id="lbl-estop-title" style="color:#ffffff !important; font-weight:700;">E-STOP</span>
+                <span class="sub" id="lbl-estop-sub" style="color:#ffffff !important; opacity:0.9;">(Emergency)</span>
               </button>
             </div>
           </div>
@@ -448,7 +481,7 @@
               <button class="btn btn-outline" id="btn-clear-logs" style="padding: 3px 8px; font-size: 0.72rem;">Clear</button>
             </div>
 
-            <div class="log-box" id="log-box-container">
+            <div class="log-box" id="log-box-container" style="height: 180px; max-height: 180px; overflow-y: auto !important; scroll-behavior: smooth;">
               <div class="log-line">
                 <span class="log-bullet"></span>
                 <span class="log-time" id="log-t1">--:--:--</span>
@@ -845,8 +878,9 @@
                 Official calibration procedure referenced from <a href="https://huggingface.co/docs/lerobot/en/so101" target="_blank" style="color:var(--cyan-accent); text-decoration:none;">huggingface.co/docs/lerobot/en/so101</a>.
               </p>
             </div>
-            <div style="display:flex; gap:10px;">
-              <button class="btn btn-outline" id="btn-calib-reload">🔄 Reload Current Calibration</button>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button class="btn btn-primary" id="btn-calib-load-ext" style="font-size:0.75rem;">📂 Load External File (.json)</button>
+              <button class="btn btn-outline" id="btn-calib-reload">🔄 Reload Server Calibration</button>
             </div>
           </div>
         </div>
@@ -1292,12 +1326,20 @@ Awaiting calibration generation...
         </div>
 
         <div class="card">
-          <div class="card-header">
+          <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
             <div class="card-title">
               <span class="icon">📄</span> Active Calibration File (so101_calibration.json)
             </div>
-            <button class="btn btn-outline" id="btn-settings-reload-calib" style="padding:4px 10px; font-size:0.72rem;">🔄 Reload Calibration</button>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <input type="file" id="input-load-external-calib" accept=".json" style="display:none;">
+              <button class="btn btn-primary" id="btn-load-external-calib" style="padding:5px 12px; font-size:0.75rem; font-weight:700;">📂 Load External Calibration File (.json)</button>
+              <button class="btn btn-outline" id="btn-export-calib" style="padding:5px 10px; font-size:0.74rem;">⬇ Export JSON</button>
+              <button class="btn btn-outline" id="btn-settings-reload-calib" style="padding:5px 10px; font-size:0.74rem;">🔄 Reload Server File</button>
+            </div>
           </div>
+          <p style="font-size:0.74rem; color:var(--text-muted); margin-bottom:8px;">
+            Select an external <code>so101_calibration.json</code> file from your computer to load, preview, and apply directly to the robot and bridge.
+          </p>
           <pre id="settings-calib-view" style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-family:monospace; font-size:0.75rem; color:#cbd5e1; max-height:260px; overflow-y:auto;">
 Loading calibration...
           </pre>
@@ -1871,6 +1913,8 @@ Loading calibration...
           btnHeader.classList.add("active");
         }
         if (btnTile) {
+          btnTile.style.background = "#991b1b";
+          btnTile.style.border = "2px solid #f87171";
           btnTile.classList.add("active");
           if (lblTileTitle) lblTileTitle.innerText = "RESET E-STOP";
           if (lblTileSub) lblTileSub.innerText = "(Locked)";
@@ -1885,6 +1929,8 @@ Loading calibration...
           btnHeader.classList.remove("active");
         }
         if (btnTile) {
+          btnTile.style.background = "#dc2626";
+          btnTile.style.border = "1px solid #ef4444";
           btnTile.classList.remove("active");
           if (lblTileTitle) lblTileTitle.innerText = "E-STOP";
           if (lblTileSub) lblTileSub.innerText = "(Emergency)";
@@ -4673,31 +4719,35 @@ Loading calibration...
       // 3. Consistently apply calibration limits across all joints and UI elements
       for (let sid = 1; sid <= 6; sid++) {
         const name = idToName[sid];
-        const c = calibData[name];
+        const c = calibData[name] || calibData[sid] || calibData[String(sid)];
         if (c) {
-          jointRawCalibrations[sid] = { min: c.range_min, max: c.range_max };
-          const minDeg = ((c.range_min - 2048) / 4096.0) * 360.0;
-          const maxDeg = ((c.range_max - 2048) / 4096.0) * 360.0;
-          if (sid !== 6) {
-            calibration[sid].min = parseFloat(minDeg.toFixed(1));
-            calibration[sid].max = parseFloat(maxDeg.toFixed(1));
-          }
-          // Update slider range on Control Page
-          const slider = document.getElementById(`slider-${sid}`);
-          const valInput = document.getElementById(`val-${sid}`);
-          const row = document.getElementById(`row-joint-${sid}`);
-          if (slider && sid !== 6) {
-            slider.min = calibration[sid].min;
-            slider.max = calibration[sid].max;
-          }
-          if (valInput && sid !== 6) {
-            valInput.min = calibration[sid].min;
-            valInput.max = calibration[sid].max;
-          }
-          if (row && sid !== 6) {
-            const rangeSpan = row.querySelector('.joint-range');
-            if (rangeSpan) {
-              rangeSpan.innerText = `(${calibration[sid].min}° ~ ${calibration[sid].max}°)`;
+          const rMin = c.range_min !== undefined ? c.range_min : c.min;
+          const rMax = c.range_max !== undefined ? c.range_max : c.max;
+          if (rMin !== undefined && rMax !== undefined) {
+            jointRawCalibrations[sid] = { min: rMin, max: rMax };
+            const minDeg = ((rMin - 2048) / 4096.0) * 360.0;
+            const maxDeg = ((rMax - 2048) / 4096.0) * 360.0;
+            if (sid !== 6) {
+              calibration[sid].min = parseFloat(minDeg.toFixed(1));
+              calibration[sid].max = parseFloat(maxDeg.toFixed(1));
+            }
+            // Update slider range on Control Page
+            const slider = document.getElementById(`slider-${sid}`);
+            const valInput = document.getElementById(`val-${sid}`);
+            const row = document.getElementById(`row-joint-${sid}`);
+            if (slider && sid !== 6) {
+              slider.min = calibration[sid].min;
+              slider.max = calibration[sid].max;
+            }
+            if (valInput && sid !== 6) {
+              valInput.min = calibration[sid].min;
+              valInput.max = calibration[sid].max;
+            }
+            if (row && sid !== 6) {
+              const rangeSpan = row.querySelector('.joint-range');
+              if (rangeSpan) {
+                rangeSpan.innerText = `(${calibration[sid].min}° ~ ${calibration[sid].max}°)`;
+              }
             }
           }
         }
@@ -4733,6 +4783,76 @@ Loading calibration...
       btnSettingsReload.addEventListener('click', () => {
         loadSettingsCalibration();
         appendLog("Reloaded active calibration from so101_calibration.json");
+      });
+    }
+
+    // Load External Calibration JSON File from User Computer
+    const inputExternalCalib = document.getElementById('input-load-external-calib');
+    if (inputExternalCalib) {
+      inputExternalCalib.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+          try {
+            const parsed = JSON.parse(evt.target.result);
+            applyActiveCalibration(parsed);
+            appendLog(`Loaded external calibration file: "${file.name}"`);
+
+            // Also upload/save to bridge server so so101_calibration.json on disk is updated
+            fetch(apiUrl('/api/calibrate'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'upload_external', calibration: parsed })
+            })
+            .then(r => r.json())
+            .then(res => {
+              if (res.success) {
+                appendLog(`Saved "${file.name}" to server as so101_calibration.json.`);
+              }
+            })
+            .catch(() => {});
+          } catch (err) {
+            appendLog(`Error reading calibration file "${file.name}": ${err.message}`, "err");
+            alert(`Could not load JSON calibration file: ${err.message}`);
+          }
+        };
+        reader.readAsText(file);
+        inputExternalCalib.value = '';
+      });
+    }
+
+    const btnLoadExternal = document.getElementById('btn-load-external-calib');
+    if (btnLoadExternal && inputExternalCalib) {
+      btnLoadExternal.addEventListener('click', () => {
+        inputExternalCalib.click();
+      });
+    }
+
+    const btnCalibLoadExt = document.getElementById('btn-calib-load-ext');
+    if (btnCalibLoadExt && inputExternalCalib) {
+      btnCalibLoadExt.addEventListener('click', () => {
+        inputExternalCalib.click();
+      });
+    }
+
+    const btnExportCalib = document.getElementById('btn-export-calib');
+    if (btnExportCalib) {
+      btnExportCalib.addEventListener('click', () => {
+        const raw = localStorage.getItem('so101_active_calibration');
+        if (!raw) {
+          appendLog("No calibration data available to export.", "warn");
+          return;
+        }
+        const blob = new Blob([raw], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "so101_calibration.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        appendLog("Exported active calibration to so101_calibration.json.");
       });
     }
 
