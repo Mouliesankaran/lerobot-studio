@@ -1516,33 +1516,39 @@ Loading calibration...
       gripper: 6
     };
 
-    const homePosition = {
-      shoulder_pan: 0.88,
-      shoulder_lift: -104.62,
-      elbow_flex: 100.57,
-      wrist_flex: 59.96,
-      wrist_roll: 1.71,
-      gripper: 3.22
+    let homePosition = {
+      shoulder_pan: -9.05,
+      shoulder_lift: -107.16,
+      elbow_flex: 98.37,
+      wrist_flex: 72.70,
+      wrist_roll: 175.78,
+      gripper: 0.00
     };
 
-    const zeroPosition = {
-      shoulder_pan: 0.0,
-      shoulder_lift: 0.0,
-      elbow_flex: 0.0,
-      wrist_flex: 0.0,
-      wrist_roll: 0.0,
-      gripper: 0.0
+    let zeroPosition = {
+      shoulder_pan: -3.34,
+      shoulder_lift: -9.05,
+      elbow_flex: 11.16,
+      wrist_flex: 11.08,
+      wrist_roll: 175.78,
+      gripper: 0.00
     };
 
     // Raw physical calibration matching so101_calibration.json
     // Restore saved poses and active calibration from localStorage
     const savedHome = localStorage.getItem('so101_home_position');
     if (savedHome) {
-      try { homePosition = JSON.parse(savedHome); } catch(e) {}
+      try {
+        const sh = JSON.parse(savedHome);
+        if (sh && typeof sh === 'object') homePosition = Object.assign({}, homePosition, sh);
+      } catch(e) {}
     }
     const savedZero = localStorage.getItem('so101_zero_position');
     if (savedZero) {
-      try { zeroPosition = JSON.parse(savedZero); } catch(e) {}
+      try {
+        const sz = JSON.parse(savedZero);
+        if (sz && typeof sz === 'object') zeroPosition = Object.assign({}, zeroPosition, sz);
+      } catch(e) {}
     }
 
     const savedCalibInit = localStorage.getItem('so101_active_calibration');
@@ -1559,10 +1565,9 @@ Loading calibration...
     };
 
     // Connection mode: 'bridge' (default on localhost / Python bridge) or 'webserial' (Direct USB)
-    let connectionMode = localStorage.getItem('so101_conn_mode');
-    if (!connectionMode) {
-      connectionMode = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'bridge' : 'webserial';
-    }
+    let connectionMode = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+      ? 'bridge'
+      : (localStorage.getItem('so101_conn_mode') || 'webserial');
 
     // ========================================================
     // BROWSER-DIRECT WEB SERIAL DRIVER (STS3215 PROTOCOL)
@@ -1746,6 +1751,7 @@ Loading calibration...
       }
 
       async disconnect() {
+        this.isConnected = false;
         this.isPolling = false;
         if (this.pollInterval) clearInterval(this.pollInterval);
         if (this.reader) {
@@ -1761,7 +1767,6 @@ Loading calibration...
           try { await this.port.close(); } catch(e) {}
           this.port = null;
         }
-        this.isConnected = false;
         this.telemetry.robot_connected = false;
         this.telemetry.online_count = 0;
       }
@@ -2348,8 +2353,14 @@ Loading calibration...
               updateCalibRangesTable(tData.calib_ranges || msg.calib_ranges, joints);
             }
           } else if (msg.type === 'init') {
-            if (msg.available_ports) updatePortsList(msg.available_ports);
-            const port = msg.active_port || (msg.available_ports && msg.available_ports[0]) || "/dev/ttyACM1";
+            if (msg.home_position) {
+              homePosition = Object.assign({}, homePosition, msg.home_position);
+            }
+            if (msg.zero_position) {
+              zeroPosition = Object.assign({}, zeroPosition, msg.zero_position);
+            }
+            if (msg.available_ports) updatePortsList(msg.available_ports, msg.active_port);
+            const port = msg.active_port || (msg.available_ports && msg.available_ports[0]) || "/dev/ttyACM0";
             updateConnUI(msg.robot_connected, msg.online_count, port);
           } else if (msg.type === 'connect_result') {
             const isOk = (typeof msg.result === 'object') ? !!msg.result.success : !!msg.result;
@@ -2463,15 +2474,15 @@ Loading calibration...
     function scanPorts() {
       fetch(apiUrl('/api/ports'))
         .then(r => r.json())
-        .then(data => updatePortsList(data.ports || []))
+        .then(data => updatePortsList(data.ports || [], currentPortName))
         .catch(() => {});
     }
 
-    function updatePortsList(ports) {
+    function updatePortsList(ports, activePort = null) {
       const select = document.getElementById('port-select');
-      const current = select.value;
+      const current = activePort || select.value;
       select.innerHTML = '';
-      if (!ports || ports.length === 0) ports = ['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyUSB0'];
+      if (!ports || ports.length === 0) ports = ['/dev/ttyACM0'];
       for (let i = 0; i < ports.length; i++) {
         const p = ports[i];
         const opt = document.createElement('option');
@@ -2479,6 +2490,9 @@ Loading calibration...
         opt.innerText = p;
         if (p === current || (i === 0 && !current)) opt.selected = true;
         select.appendChild(opt);
+      }
+      if (current && Array.from(select.options).some(o => o.value === current)) {
+        select.value = current;
       }
     }
 
@@ -2531,8 +2545,20 @@ Loading calibration...
           alert(err.message);
         }
       } else {
-        const port = document.getElementById('port-select').value;
+        const port = document.getElementById('port-select').value || '/dev/ttyACM0';
         appendLog(`Connecting to ${port} via Local ROS 2 Bridge...`);
+        fetch(apiUrl('/api/connect'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ port: port, baudrate: 1000000 })
+        }).then(r => r.json()).then(data => {
+          if (data.success) {
+            updateConnUI(true, data.online_count || 6, port);
+            appendLog(`✔ Connected to physical robot on ${port}!`);
+          } else {
+            appendLog(`Connection failed: ${data.message || port}`, "err");
+          }
+        }).catch(() => {});
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'connect_robot', port: port, baudrate: 1000000 }));
         } else {
@@ -2549,9 +2575,12 @@ Loading calibration...
         updateConnUI(false, 0, "Web Serial", "Disconnected");
         appendLog("Hardware disconnected.");
       } else {
+        updateConnUI(false, 0, currentPortName, "Disconnected");
+        fetch(apiUrl('/api/disconnect'), { method: 'POST' }).catch(() => {});
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'disconnect_robot' }));
         }
+        appendLog("Hardware disconnected.");
       }
     });
 
@@ -2582,9 +2611,20 @@ Loading calibration...
       const vel = getManualVelocity();
       appendLog(`Moving to Canonical Zero position at ${vel} rad/s...`);
       sendRobotZeroCommand(vel);
+      const zArr = [
+        zeroPosition.shoulder_pan,
+        zeroPosition.shoulder_lift,
+        zeroPosition.elbow_flex,
+        zeroPosition.wrist_flex,
+        zeroPosition.wrist_roll,
+        zeroPosition.gripper
+      ];
       for (let i = 1; i <= 6; i++) {
-        document.getElementById(`val-${i}`).value = "0.0";
-        document.getElementById(`slider-${i}`).value = "0.0";
+        const v = (zArr[i - 1] !== undefined ? zArr[i - 1] : 0.0).toFixed(1);
+        const valEl = document.getElementById(`val-${i}`);
+        const slEl = document.getElementById(`slider-${i}`);
+        if (valEl) valEl.value = v;
+        if (slEl) slEl.value = v;
       }
     });
 
@@ -4050,13 +4090,13 @@ Loading calibration...
 
     document.getElementById('btn-rec-stop').addEventListener('click', () => {
       isClientRecordingPaused = false;
-      if (isClientRecording) {
-        isClientRecording = false;
-        if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
-          webSerialDriver.syncWriteTorque(true);
-        }
-      } else if (ws && ws.readyState === WebSocket.OPEN) {
+      isClientRecording = false;
+      if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+        webSerialDriver.syncWriteTorque(true);
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'stop_record' }));
+        ws.send(JSON.stringify({ type: 'torque', enable: true }));
       }
       updateRecordUI(false);
       const vel = getManualVelocity();
@@ -4368,6 +4408,8 @@ Loading calibration...
       // 1. Enable torque ONCE before playback begins
       if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
         webSerialDriver.syncWriteTorque(true);
+      } else if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'torque', enable: true }));
       }
 
       // 2. Smoothly pre-align arm to the initial frame over 800 ms to eliminate snap/jerking
@@ -4716,7 +4758,7 @@ Loading calibration...
       const calibPre = document.getElementById('calib-json-preview');
       if (calibPre) calibPre.innerText = JSON.stringify(calibData, null, 2);
 
-      // 3. Consistently apply calibration limits across all joints and UI elements
+      // 3. Consistently apply raw encoder limits for calibration tracking without overwriting safe kinematic degree limits
       for (let sid = 1; sid <= 6; sid++) {
         const name = idToName[sid];
         const c = calibData[name] || calibData[sid] || calibData[String(sid)];
@@ -4725,30 +4767,6 @@ Loading calibration...
           const rMax = c.range_max !== undefined ? c.range_max : c.max;
           if (rMin !== undefined && rMax !== undefined) {
             jointRawCalibrations[sid] = { min: rMin, max: rMax };
-            const minDeg = ((rMin - 2048) / 4096.0) * 360.0;
-            const maxDeg = ((rMax - 2048) / 4096.0) * 360.0;
-            if (sid !== 6) {
-              calibration[sid].min = parseFloat(minDeg.toFixed(1));
-              calibration[sid].max = parseFloat(maxDeg.toFixed(1));
-            }
-            // Update slider range on Control Page
-            const slider = document.getElementById(`slider-${sid}`);
-            const valInput = document.getElementById(`val-${sid}`);
-            const row = document.getElementById(`row-joint-${sid}`);
-            if (slider && sid !== 6) {
-              slider.min = calibration[sid].min;
-              slider.max = calibration[sid].max;
-            }
-            if (valInput && sid !== 6) {
-              valInput.min = calibration[sid].min;
-              valInput.max = calibration[sid].max;
-            }
-            if (row && sid !== 6) {
-              const rangeSpan = row.querySelector('.joint-range');
-              if (rangeSpan) {
-                rangeSpan.innerText = `(${calibration[sid].min}° ~ ${calibration[sid].max}°)`;
-              }
-            }
           }
         }
       }
