@@ -782,13 +782,7 @@ class ReportHandler(BaseApiHandler):
 
 is_playing_trajectory = False
 playback_stop_flag = False
-playback_pause_flag = False
 playback_thread = None
-
-def toggle_playback_pause():
-    global playback_pause_flag
-    playback_pause_flag = not playback_pause_flag
-    return playback_pause_flag
 
 def broadcast_message(msg_dict):
     msg_str = json.dumps(msg_dict)
@@ -799,7 +793,7 @@ def broadcast_message(msg_dict):
             pass
 
 def _playback_thread_fn(frames, filename, speed_multiplier, loop_count=1):
-    global is_playing_trajectory, playback_stop_flag, playback_pause_flag
+    global is_playing_trajectory, playback_stop_flag
     try:
         if driver.is_connected:
             driver.set_torque(True)
@@ -831,10 +825,6 @@ def _playback_thread_fn(frames, filename, speed_multiplier, loop_count=1):
             prev_t = frames[0][0]
 
             for idx, f in enumerate(frames):
-                if playback_stop_flag or not is_playing_trajectory:
-                    break
-                while playback_pause_flag and not playback_stop_flag and is_playing_trajectory:
-                    time.sleep(0.05)
                 if playback_stop_flag or not is_playing_trajectory:
                     break
                 curr_t = f[0]
@@ -871,14 +861,13 @@ def _playback_thread_fn(frames, filename, speed_multiplier, loop_count=1):
         print(f'[ERROR] Playback worker error: {e}')
     finally:
         is_playing_trajectory = False
-        playback_pause_flag = False
         tornado.ioloop.IOLoop.current().add_callback(
             broadcast_message,
             {'type': 'playback_finished', 'filename': filename}
         )
 
 def start_dataset_playback(filename, speed_multiplier=1.0, loop_count=1):
-    global is_playing_trajectory, playback_stop_flag, playback_pause_flag, playback_thread
+    global is_playing_trajectory, playback_stop_flag, playback_thread
     if is_playing_trajectory:
         return False, 'Playback already active'
     if teleop_ctrl.is_emergency_stopped:
@@ -907,7 +896,6 @@ def start_dataset_playback(filename, speed_multiplier=1.0, loop_count=1):
         return False, '0 valid frames in dataset'
     
     playback_stop_flag = False
-    playback_pause_flag = False
     is_playing_trajectory = True
     playback_thread = threading.Thread(
         target=_playback_thread_fn,
@@ -918,9 +906,8 @@ def start_dataset_playback(filename, speed_multiplier=1.0, loop_count=1):
     return True, f'Started playback of {len(frames)} frames ({loop_count if loop_count > 0 else "infinite"} loop(s))'
 
 def stop_dataset_playback():
-    global is_playing_trajectory, playback_stop_flag, playback_pause_flag
+    global is_playing_trajectory, playback_stop_flag
     playback_stop_flag = True
-    playback_pause_flag = False
     is_playing_trajectory = False
     return True
 
@@ -974,13 +961,6 @@ class StopPlaybackHandler(BaseApiHandler):
         self.set_header("Content-Type", "application/json")
         stop_dataset_playback()
         self.write(json.dumps({"success": True, "message": "Playback stopped"}))
-
-
-class PausePlaybackHandler(BaseApiHandler):
-    def post(self):
-        self.set_header("Content-Type", "application/json")
-        paused = toggle_playback_pause()
-        self.write(json.dumps({"success": True, "paused": paused}))
 
 
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
@@ -1169,10 +1149,6 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                 stop_dataset_playback()
                 self.write_message(json.dumps({"type": "stop_play_result", "success": True}))
 
-            elif action == "pause_playback":
-                paused = toggle_playback_pause()
-                self.write_message(json.dumps({"type": "pause_play_result", "paused": paused}))
-
         except Exception as ex:
             print(f"[WARN] WebSocket message error: {ex}")
 
@@ -1273,7 +1249,6 @@ def make_app():
         (r"/api/emergency_stop/reset", EmergencyStopResetHandler),
         (r"/api/teleop/status", TeleopStatusHandler),
         (r"/api/play_dataset", PlayDatasetHandler),
-        (r"/api/pause_playback", PausePlaybackHandler),
         (r"/api/stop_playback", StopPlaybackHandler),
         (r"/api/camera/devices", CameraDevicesHandler),
         (r"/api/camera/status", CameraStatusHandler),
