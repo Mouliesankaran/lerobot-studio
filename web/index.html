@@ -526,6 +526,8 @@
 
             <div class="dataset-actions-row">
               <button class="btn btn-primary" id="btn-load-dataset">📂 Load</button>
+              <input type="file" id="input-import-csv" accept=".csv" style="display:none;">
+              <button class="btn btn-outline" id="btn-import-csv" title="Load external CSV trajectory file from computer">📂 Import CSV</button>
               <button class="btn btn-outline" id="btn-download-dataset">⬇ Download CSV</button>
             </div>
 
@@ -1864,7 +1866,7 @@ Loading calibration...
         this.isPolling = true;
         let currentPollId = 1;
         this.pollInterval = setInterval(async () => {
-          if (!this.isConnected || !this.isPolling || this.isBusySending) return;
+          if (!this.isConnected || !this.isPolling || this.isBusySending || connectionMode !== 'webserial') return;
           try {
             await this.sendRawPacket([0xFF, 0xFF, currentPollId, 4, 0x02, 56, 8]);
             currentPollId = (currentPollId % 6) + 1;
@@ -2327,6 +2329,12 @@ Loading calibration...
           }
 
           if (msg.type === 'telemetry') {
+            // Guard: If browser Web Serial is actively connected and driving the arm,
+            // IGNORE background WebSocket telemetry frames from bridge simulator!
+            if (connectionMode === 'webserial' && webSerialDriver && webSerialDriver.isConnected) {
+              return;
+            }
+
             const tData = msg.data || msg;
             const joints = tData.joints || msg.joints;
             const isConn = (tData.robot_connected !== undefined) ? tData.robot_connected : (msg.robot_connected !== undefined ? msg.robot_connected : true);
@@ -2372,6 +2380,21 @@ Loading calibration...
             updatePortsList(msg.ports || []);
           } else if (msg.type === 'record_status') {
             updateRecordUI(msg.recording, msg.filename);
+            if (!msg.recording && msg.filename) {
+              lastRecordedDatasetName = msg.filename;
+              loadedDatasetFilename = msg.filename;
+              loadDatasetsList(msg.filename);
+            }
+          } else if (msg.type === 'play_result') {
+            if (!msg.success) {
+              isPlayingTrajectory = false;
+              document.getElementById('btn-play-dataset').disabled = false;
+              document.getElementById('btn-stop-playback').disabled = true;
+              document.getElementById('playback-status-text').innerText = "Playback failed: " + (msg.message || "Unknown error");
+              appendLog("Playback error: " + (msg.message || "Unknown error"), "err");
+            } else {
+              appendLog(msg.message || "Trajectory playback started.");
+            }
           } else if (msg.type === 'report_ready') {
             showReportModal(msg.report);
           } else if (msg.type === 'playback_progress') {
@@ -2509,6 +2532,9 @@ Loading calibration...
         if (btnConnect) btnConnect.innerText = '▶ Connect USB (Browser)';
         appendLog("Mode: Direct USB (Web Serial - No Terminal / No ROS 2).");
       } else {
+        if (webSerialDriver && webSerialDriver.isConnected) {
+          try { webSerialDriver.disconnect(); } catch(e) {}
+        }
         if (bridgeRow) bridgeRow.style.display = 'flex';
         if (btnConnect) btnConnect.innerText = '▶ Connect Bridge (ROS 2)';
         appendLog("Mode: Local Bridge (Python Tornado / ROS 2).");
@@ -2916,7 +2942,11 @@ Loading calibration...
     }
 
     function renderTelemetry(data) {
-      if (!data.joints) return;
+      if (!data || !data.joints) return;
+
+      // Guard: Strictly accept telemetry from the active connection mode driver
+      if (connectionMode === 'webserial' && data !== webSerialDriver.telemetry) return;
+      if (connectionMode === 'bridge' && data === webSerialDriver.telemetry) return;
 
       const now = Date.now();
       const dt = Math.max(0.01, (now - prevJointTime) / 1000.0);
@@ -4026,7 +4056,7 @@ Loading calibration...
       }
     });
 
-    // ----------------------------------------------------
+// ----------------------------------------------------
     // MOVEMENT & RECORDING (NO AUTOMATIC ASKING - EXPLICIT SAVE ONLY)
     // ----------------------------------------------------
     let isClientRecording = false;
@@ -4055,13 +4085,14 @@ Loading calibration...
     });
 
     document.getElementById('btn-rec-stop').addEventListener('click', () => {
-      isClientRecording = false;
-      if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
-        webSerialDriver.syncWriteTorque(true);
+      if (isClientRecording) {
+        isClientRecording = false;
+        if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+          webSerialDriver.syncWriteTorque(true);
+        }
       }
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'stop_record' }));
-        ws.send(JSON.stringify({ type: 'torque', enable: true }));
       }
       updateRecordUI(false);
       const vel = getManualVelocity();
@@ -4094,6 +4125,17 @@ Loading calibration...
         document.getElementById('loaded-dataset-meta').innerText = `${clientRecordedRows.length} frames • ${durSec}s (Loaded)`;
         document.getElementById('btn-play-dataset').disabled = false;
         document.getElementById('playback-status-text').innerText = `Loaded ${autoFname} (${clientRecordedRows.length} frames). Ready for playback.`;
+
+        // If in bridge mode, immediately sync recorded rows to server so server also has it!
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          let csvContent = "timestamp,shoulder_pan,shoulder_lift,elbow_flex,wrist_flex,wrist_roll,gripper\n";
+          clientRecordedRows.forEach(r => { csvContent += r.join(",") + "\n"; });
+          fetch(apiUrl('/api/recordings'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: autoFname, content: csvContent })
+          }).then(() => { loadDatasetsList(); }).catch(()=>{});
+        }
 
         appendLog(`Recording stopped (${clientRecordedRows.length} frames). Trajectory loaded for playback.`);
       } else {
@@ -4168,7 +4210,67 @@ Loading calibration...
       }
     }
 
-    function loadDatasetsList() {
+    function loadSelectedDataset(fname) {
+      if (!fname) return;
+      if (clientDatasets[fname]) {
+        const rows = clientDatasets[fname];
+        loadedDatasetFilename = fname;
+        const dur = (rows.length / 30.0).toFixed(1);
+        document.getElementById('loaded-dataset-name').innerText = fname;
+        document.getElementById('loaded-dataset-meta').innerText = `${rows.length} frames • ${dur}s`;
+        document.getElementById('btn-play-dataset').disabled = false;
+        document.getElementById('playback-status-text').innerText = `Ready to play ${rows.length} frames`;
+        appendLog(`Dataset loaded: ${fname} (${rows.length} frames, ${dur}s). Ready for playback.`);
+        return;
+      }
+
+      fetch(apiUrl(`/api/download/${fname}`))
+        .then(r => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.text();
+        })
+        .then(csvText => {
+          const lines = csvText.trim().split('\n');
+          const rows = [];
+          for (let i = 1; i < lines.length; i++) {
+            const parts = lines[i].split(',').map(s => s.trim());
+            if (parts.length >= 7) rows.push(parts);
+          }
+          if (rows.length > 0) {
+            clientDatasets[fname] = rows;
+            loadedDatasetFilename = fname;
+            const dur = (rows.length / 30.0).toFixed(1);
+            document.getElementById('loaded-dataset-name').innerText = fname;
+            document.getElementById('loaded-dataset-meta').innerText = `${rows.length} frames • ${dur}s`;
+            document.getElementById('btn-play-dataset').disabled = false;
+            document.getElementById('playback-status-text').innerText = `Ready to play ${rows.length} frames`;
+            appendLog(`Dataset loaded: ${fname} (${rows.length} frames, ${dur}s). Ready for playback.`);
+          } else {
+            throw new Error("No data rows found in CSV");
+          }
+        })
+        .catch(err => {
+          fetch(apiUrl(`/api/dataset_info/${fname}`))
+            .then(r => r.json())
+            .then(info => {
+              if (info.success) {
+                loadedDatasetFilename = fname;
+                document.getElementById('loaded-dataset-name').innerText = fname;
+                document.getElementById('loaded-dataset-meta').innerText = `${info.frames_count} frames • ${info.duration_s}s`;
+                document.getElementById('btn-play-dataset').disabled = false;
+                document.getElementById('playback-status-text').innerText = `Ready to play ${info.frames_count} frames`;
+                appendLog(`Dataset loaded: ${fname} (${info.frames_count} frames, ${info.duration_s}s). Ready for playback.`);
+              } else {
+                appendLog("Failed to load dataset: " + (info.message || "Unknown error"), "err");
+              }
+            })
+            .catch(e => {
+              appendLog("Error loading dataset info: " + err.message, "err");
+            });
+        });
+    }
+
+    function loadDatasetsList(selectedFname = null) {
       fetch(apiUrl('/api/recordings'))
         .then(r => r.json())
         .then(data => {
@@ -4184,13 +4286,18 @@ Loading calibration...
 
           const files = data.recordings || [];
           for (const f of files) {
-            const opt = document.createElement('option');
-            opt.value = f.filename;
-            opt.innerText = `${f.filename} (${f.size_kb} KB)`;
-            select.appendChild(opt);
+            if (!clientDatasets[f.filename]) {
+              const opt = document.createElement('option');
+              opt.value = f.filename;
+              opt.innerText = `${f.filename} (${f.size_kb} KB)`;
+              select.appendChild(opt);
+            }
           }
           if (select.children.length === 0) {
             select.innerHTML = '<option value="">No datasets found</option>';
+          } else if (selectedFname) {
+            select.value = selectedFname;
+            loadSelectedDataset(selectedFname);
           }
         })
         .catch(() => {
@@ -4204,6 +4311,9 @@ Loading calibration...
           }
           if (select.children.length === 0) {
             select.innerHTML = '<option value="">No datasets found</option>';
+          } else if (selectedFname) {
+            select.value = selectedFname;
+            loadSelectedDataset(selectedFname);
           }
         });
     }
@@ -4215,37 +4325,63 @@ Loading calibration...
         return;
       }
       appendLog(`Loading dataset: ${fname}...`);
-
-      if (clientDatasets[fname]) {
-        const rows = clientDatasets[fname];
-        loadedDatasetFilename = fname;
-        const dur = (rows.length / 30.0).toFixed(1);
-        document.getElementById('loaded-dataset-name').innerText = fname;
-        document.getElementById('loaded-dataset-meta').innerText = `${rows.length} frames • ${dur}s`;
-        document.getElementById('btn-play-dataset').disabled = false;
-        document.getElementById('playback-status-text').innerText = `Ready to play ${rows.length} frames`;
-        appendLog(`Dataset loaded: ${fname} (${rows.length} frames, ${dur}s). Ready for playback.`);
-        return;
-      }
-
-      fetch(apiUrl(`/api/dataset_info/${fname}`))
-        .then(r => r.json())
-        .then(info => {
-          if (info.success) {
-            loadedDatasetFilename = fname;
-            document.getElementById('loaded-dataset-name').innerText = fname;
-            document.getElementById('loaded-dataset-meta').innerText = `${info.frames_count} frames • ${info.duration_s}s`;
-            document.getElementById('btn-play-dataset').disabled = false;
-            document.getElementById('playback-status-text').innerText = `Ready to play ${info.frames_count} frames`;
-            appendLog(`Dataset loaded: ${fname} (${info.frames_count} frames, ${info.duration_s}s). Ready for playback.`);
-          } else {
-            appendLog("Failed to load dataset: " + (info.message || "Unknown error"), "err");
-          }
-        })
-        .catch(err => {
-          appendLog("Error loading dataset info: " + err, "err");
-        });
+      loadSelectedDataset(fname);
     });
+
+    const btnImportCsv = document.getElementById('btn-import-csv');
+    const inputImportCsv = document.getElementById('input-import-csv');
+    if (btnImportCsv && inputImportCsv) {
+      btnImportCsv.addEventListener('click', () => {
+        inputImportCsv.value = '';
+        inputImportCsv.click();
+      });
+      inputImportCsv.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          try {
+            const csvText = evt.target.result;
+            const lines = csvText.trim().split('\n');
+            const rows = [];
+            for (let i = 1; i < lines.length; i++) {
+              const parts = lines[i].split(',').map(s => s.trim());
+              if (parts.length >= 7) rows.push(parts);
+            }
+            if (rows.length === 0) {
+              appendLog("No valid data rows found in " + file.name, "err");
+              alert("No valid data rows found in CSV file.");
+              return;
+            }
+            const fname = file.name;
+            clientDatasets[fname] = rows;
+            lastRecordedDatasetName = fname;
+            loadedDatasetFilename = fname;
+
+            const select = document.getElementById('dataset-select');
+            let existingOpt = Array.from(select.options).find(o => o.value === fname);
+            if (!existingOpt) {
+              existingOpt = document.createElement('option');
+              existingOpt.value = fname;
+              select.prepend(existingOpt);
+            }
+            const sizeKb = (file.size / 1024).toFixed(1);
+            existingOpt.innerText = `${fname} (${rows.length} frames • ${sizeKb} KB)`;
+            select.value = fname;
+
+            const dur = (rows.length / 30.0).toFixed(1);
+            document.getElementById('loaded-dataset-name').innerText = fname;
+            document.getElementById('loaded-dataset-meta').innerText = `${rows.length} frames • ${dur}s (Imported)`;
+            document.getElementById('btn-play-dataset').disabled = false;
+            document.getElementById('playback-status-text').innerText = `Imported ${fname} (${rows.length} frames). Ready for playback.`;
+            appendLog(`Successfully imported CSV dataset: ${fname} (${rows.length} frames, ${dur}s). Ready for playback!`);
+          } catch(err) {
+            appendLog("Failed to parse CSV: " + err.message, "err");
+          }
+        };
+        reader.readAsText(file);
+      });
+    }
 
     document.getElementById('btn-download-dataset').addEventListener('click', () => {
       const fname = document.getElementById('dataset-select').value;
@@ -4282,7 +4418,27 @@ Loading calibration...
         appendLog("Robot not connected! Click Connect first.", "warn");
         return;
       }
-      if (!checkMotionAllowed()) return;
+      if (isEmergencyStopActive) {
+        appendLog("Motion Blocked: EMERGENCY STOP is active! Reset E-STOP before moving.", "err");
+        return;
+      }
+
+      // Automatically power ON motors for trajectory playback
+      if (!isMotorsPowered) {
+        isMotorsPowered = true;
+        const btnTileTorque = document.getElementById('btn-tile-torque');
+        const lblTitle = document.getElementById('lbl-torque-title');
+        const lblSub = document.getElementById('lbl-torque-sub');
+        if (btnTileTorque) btnTileTorque.className = 'quick-tile green';
+        if (lblTitle) lblTitle.innerText = 'Motors: ON';
+        if (lblSub) lblSub.innerText = '(Click to Limp)';
+        if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
+          webSerialDriver.syncWriteTorque(true);
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'torque', enable: true }));
+        }
+        appendLog("Motors automatically powered ON for trajectory playback.");
+      }
 
       isPlayingTrajectory = true;
       document.getElementById('btn-play-dataset').disabled = true;
@@ -4298,15 +4454,56 @@ Loading calibration...
       const loopCount = isInfinite ? -1 : (parseInt(loopCountInput ? loopCountInput.value : 1) || 1);
 
       // Replay frames smoothly at 30 Hz
-      if (clientDatasets[loadedDatasetFilename] || (connectionMode === 'webserial' && webSerialDriver.isConnected)) {
-        playClientTrajectory(clientDatasets[loadedDatasetFilename], speedMult, loopCount);
-      } else if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'play_dataset',
-          filename: loadedDatasetFilename,
-          speed: speedMult,
-          loop_count: loopCount
-        }));
+      if (connectionMode === 'webserial') {
+        const rows = clientDatasets[loadedDatasetFilename];
+        if (!rows || rows.length === 0) {
+          appendLog("No trajectory frames loaded for " + loadedDatasetFilename + "! Click Load or Import CSV first.", "warn");
+          document.getElementById('btn-play-dataset').disabled = false;
+          document.getElementById('btn-stop-playback').disabled = true;
+          isPlayingTrajectory = false;
+          return;
+        }
+        playClientTrajectory(rows, speedMult, loopCount);
+      } else {
+        // Bridge mode: If dataset exists in client memory, sync it to server so native bridge playback plays it smoothly
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          if (clientDatasets[loadedDatasetFilename]) {
+            let csvContent = "timestamp,shoulder_pan,shoulder_lift,elbow_flex,wrist_flex,wrist_roll,gripper\n";
+            clientDatasets[loadedDatasetFilename].forEach(r => { csvContent += r.join(",") + "\n"; });
+            fetch(apiUrl('/api/recordings'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: loadedDatasetFilename, content: csvContent })
+            })
+            .then(r => r.json())
+            .then(res => {
+              const fileToPlay = (res && res.filename) ? res.filename : loadedDatasetFilename;
+              ws.send(JSON.stringify({
+                type: 'play_dataset',
+                filename: fileToPlay,
+                speed: speedMult,
+                loop_count: loopCount
+              }));
+            })
+            .catch(() => {
+              ws.send(JSON.stringify({
+                type: 'play_dataset',
+                filename: loadedDatasetFilename,
+                speed: speedMult,
+                loop_count: loopCount
+              }));
+            });
+          } else {
+            ws.send(JSON.stringify({
+              type: 'play_dataset',
+              filename: loadedDatasetFilename,
+              speed: speedMult,
+              loop_count: loopCount
+            }));
+          }
+        } else if (clientDatasets[loadedDatasetFilename]) {
+          playClientTrajectory(clientDatasets[loadedDatasetFilename], speedMult, loopCount);
+        }
       }
     });
 
@@ -4328,8 +4525,6 @@ Loading calibration...
       // 1. Enable torque ONCE before playback begins
       if (connectionMode === 'webserial' && webSerialDriver.isConnected) {
         webSerialDriver.syncWriteTorque(true);
-      } else if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'torque', enable: true }));
       }
 
       // 2. Smoothly pre-align arm to the initial frame over 800 ms to eliminate snap/jerking

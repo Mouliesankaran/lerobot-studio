@@ -381,7 +381,9 @@ active_targets: Dict[str, float] = {}
 is_recording = False
 record_file = None
 record_writer = None
+current_record_filename = ""
 sim_positions: Dict[str, float] = {}
+last_actual_positions: Dict[str, float] = {}
 
 calib_recording_ranges = False
 calib_homing_offsets: Dict[str, int] = {}
@@ -684,6 +686,25 @@ class RecordingsListHandler(BaseApiHandler):
                 })
         self.write(json.dumps({"recordings": recordings}))
 
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            req = json.loads(self.request.body.decode("utf-8")) if self.request.body else {}
+            filename = req.get("filename", "")
+            content = req.get("content", "")
+            if not filename or not content:
+                self.write(json.dumps({"success": False, "message": "Missing filename or content"}))
+                return
+            safe_name = Path(filename).name
+            if not safe_name.endswith(".csv"):
+                safe_name += ".csv"
+            fpath = DATA_DIR / safe_name
+            with open(fpath, "w", encoding="utf-8", newline="") as fp:
+                fp.write(content)
+            self.write(json.dumps({"success": True, "filename": safe_name, "message": f"Saved {safe_name} to server."}))
+        except Exception as e:
+            self.write(json.dumps({"success": False, "message": str(e)}))
+
 
 class DatasetInfoHandler(BaseApiHandler):
     def get(self, filename):
@@ -876,7 +897,12 @@ def start_dataset_playback(filename, speed_multiplier=1.0, loop_count=1):
     driver.set_torque(True)
     fpath = DATA_DIR / filename
     if not fpath.exists():
-        return False, f'File not found: {filename}'
+        for cand in [ROOT_DIR / "data" / filename, ROOT_DIR / filename, ROOT_DIR / "web" / filename]:
+            if cand.exists():
+                fpath = cand
+                break
+        if not fpath.exists():
+            return False, f'File not found: {filename}'
     frames = []
     try:
         with open(fpath, 'r', newline='') as fp:
@@ -1098,10 +1124,12 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                         sim_positions[k] = float(v)
 
             elif action == "start_record":
-                prefix = data.get("prefix", "manual_recording")
+                global current_record_filename
+                prefix = data.get("prefix", "manual_lead_through")
                 driver.set_torque(False)
                 teleop_ctrl.set_motor_power(False)
                 fname = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                current_record_filename = fname
                 fpath = DATA_DIR / fname
                 record_file = open(fpath, "w", newline="")
                 record_writer = csv.writer(record_file)
@@ -1111,6 +1139,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
             elif action == "stop_record":
                 is_recording = False
+                saved_name = current_record_filename
                 if record_file:
                     try:
                         record_file.close()
@@ -1120,7 +1149,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                     record_writer = None
                 driver.set_torque(True)
                 teleop_ctrl.set_motor_power(True)
-                self.write_message(json.dumps({"type": "record_status", "recording": False, "result": True}))
+                self.write_message(json.dumps({"type": "record_status", "recording": False, "result": True, "filename": saved_name}))
 
             elif action == "play_dataset":
                 fname = data.get("filename", "")
@@ -1171,8 +1200,12 @@ def poll_and_broadcast():
             volt = fb["voltage_v"]
             temp = fb["temperature_c"]
             ticks = fb["encoder_ticks"]
+            last_actual_positions[name] = act_deg
         else:
-            act_deg = sim_positions.get(name, 0.0)
+            if driver.is_connected and name in last_actual_positions:
+                act_deg = last_actual_positions[name]
+            else:
+                act_deg = sim_positions.get(name, 0.0)
             volt = 5.0
             temp = 28
             ticks = driver.deg_to_ticks(sid, act_deg)
