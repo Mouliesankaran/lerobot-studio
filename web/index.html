@@ -5060,6 +5060,7 @@ Loading calibration...
     // silently opened as a plain webcam (root cause of "Depth not working" on other machines).
     let camAllDevices = [];   // Array of {id, label, type, isBrowser, depth}
     let isRequestingPermission = false;
+    let camBridgeOnline = false;
 
     function renderCameraDeviceOptions() {
       const select = document.getElementById('cam-device-select');
@@ -5077,47 +5078,53 @@ Loading calibration...
         return;
       }
 
-      // Categorize into recommended matches and other available cameras
-      const primaryMatches = [];
-      const otherCameras = [];
-
+      // Classify each device:
+      // Orbbec if type is orbbec or label/id contains orbbec/femto/astra/gemini;
+      // RealSense if type is realsense or contains realsense/d455/d435/d415/d405.
+      let shown = [];
       camAllDevices.forEach(d => {
-        let isMatch = false;
         const low = (d.label + ' ' + (d.id || '')).toLowerCase();
-        if (model === 'orbbec') {
-          isMatch = (d.type === 'orbbec' || low.includes('orbbec') || low.includes('femto') || low.includes('astra') || low.includes('gemini'));
-        } else if (model === 'realsense') {
-          isMatch = (d.type === 'realsense' || low.includes('realsense') || low.includes('intel') || low.includes('d455') || low.includes('d435') || low.includes('d405'));
-        } else {
-          // Standard USB Webcam
-          isMatch = (d.type === 'usb' || d.type === 'browser' || (!low.includes('orbbec') && !low.includes('realsense')));
-        }
+        const isOrbbec = d.type === 'orbbec' || low.includes('orbbec') || low.includes('femto') || low.includes('astra') || low.includes('gemini');
+        const isRealSense = d.type === 'realsense' || low.includes('realsense') || low.includes('d455') || low.includes('d435') || low.includes('d415') || low.includes('d405');
 
-        if (isMatch) primaryMatches.push(d);
-        else otherCameras.push(d);
+        if (model === 'orbbec') {
+          if (isOrbbec) shown.push(d);
+        } else if (model === 'realsense') {
+          if (isRealSense) shown.push(d);
+        } else {
+          // webcam: neither Orbbec nor RealSense
+          if (!isOrbbec && !isRealSense) shown.push(d);
+        }
       });
 
-      // 1. Primary recommended matches at the top
-      if (primaryMatches.length > 0) {
-        const grp = document.createElement('optgroup');
-        grp.label = `Recommended for ${model === 'orbbec' ? 'Orbbec 3D' : (model === 'realsense' ? 'Intel RealSense' : 'Webcam')}`;
-        primaryMatches.forEach(d => {
-          const opt = document.createElement('option');
-          opt.value = d.id;
-          opt.innerText = `★ ${d.label}`;
-          opt.setAttribute('data-type', d.type);
-          opt.setAttribute('data-browser', d.isBrowser ? '1' : '0');
-          opt.setAttribute('data-depth', d.depth ? '1' : '0');
-          grp.appendChild(opt);
-        });
-        select.appendChild(grp);
+      // If any entry in shown comes from the bridge (not browser, not network), remove browser entries (duplicates)
+      const hasBridgeEntry = shown.some(d => !d.isBrowser && d.type !== 'network');
+      if (hasBridgeEntry) {
+        shown = shown.filter(d => !d.isBrowser);
       }
 
-      // 2. Other detected cameras
-      if (otherCameras.length > 0) {
+      // If shown is empty AND the model is orbbec/realsense AND camBridgeOnline:
+      if (shown.length === 0 && (model === 'orbbec' || model === 'realsense') && camBridgeOnline) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.setAttribute('data-type', 'none');
+        const mLabel = model === 'orbbec' ? 'Orbbec' : 'RealSense';
+        opt.innerText = `No ${mLabel} camera detected - plug it in, then press Refresh`;
+        select.appendChild(opt);
+        return;
+      }
+
+      // If shown is empty AND the bridge is NOT online (hosted/browser-only): shown = camAllDevices.slice()
+      if (shown.length === 0 && !camBridgeOnline) {
+        shown = camAllDevices.slice();
+      }
+
+      // Render shown in one <optgroup label="Detected <model> ports">
+      if (shown.length > 0) {
         const grp = document.createElement('optgroup');
-        grp.label = "Other Detected Cameras";
-        otherCameras.forEach(d => {
+        const mTitle = model === 'orbbec' ? 'Orbbec' : (model === 'realsense' ? 'RealSense' : 'Webcam');
+        grp.label = `Detected ${mTitle} ports`;
+        shown.forEach(d => {
           const opt = document.createElement('option');
           opt.value = d.id;
           opt.innerText = d.label;
@@ -5129,7 +5136,7 @@ Loading calibration...
         select.appendChild(grp);
       }
 
-      // 3. Fallback entry if absolutely nothing was pre-enumerated
+      // Fallback entry if absolutely nothing was pre-enumerated
       if (select.options.length === 0) {
         const opt = document.createElement('option');
         opt.value = 'default';
@@ -5151,6 +5158,7 @@ Loading calibration...
       const select = document.getElementById('cam-device-select');
       if (!select) return;
       camAllDevices = [];
+      camBridgeOnline = false;
 
       // If user clicked Scan or requested permission, trigger a quick permission prompt to unlock real device labels
       if (promptPermission && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && !isRequestingPermission) {
@@ -5206,6 +5214,7 @@ Loading calibration...
       try {
         const r = await fetch(apiUrl('/api/camera/devices?refresh=1'));
         if (r.ok) {
+          camBridgeOnline = true;
           const data = await r.json();
           (data.devices || []).forEach(d => {
             // Dedupe if already represented
@@ -5399,9 +5408,16 @@ Loading calibration...
       const model = document.getElementById('cam-model-select').value;
       const devSelect = document.getElementById('cam-device-select');
       const selectedOption = devSelect && devSelect.selectedOptions ? devSelect.selectedOptions[0] : null;
-      const devId = selectedOption ? selectedOption.value : 'default';
+      const devId = selectedOption ? selectedOption.value : '';
       const devName = selectedOption ? selectedOption.innerText.replace(/^[★\s]+/, '') : "Camera";
       const isBrowserDev = selectedOption ? (selectedOption.getAttribute('data-browser') === '1') : true;
+
+      if (!devId) {
+        document.getElementById('cam-status-msg').innerText =
+          'No camera detected for this model - plug it in and press Refresh.';
+        return;
+      }
+
       const res = document.getElementById('cam-res-select').value.split('x');
       const width = parseInt(res[0]) || 640;
       const height = parseInt(res[1]) || 480;

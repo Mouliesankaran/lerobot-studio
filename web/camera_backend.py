@@ -30,6 +30,8 @@ import shutil
 import subprocess
 import time
 import threading
+import logging
+import select
 from typing import Any, Dict, List, Optional, Tuple
 
 # Windows MSMF takes ~30 s to open a camera unless HW transforms are disabled.
@@ -65,6 +67,8 @@ try:
 except Exception:
     ob = None  # type: ignore
     ORBBEC_AVAILABLE = False
+
+logger = logging.getLogger("so101.camera")
 
 IS_WINDOWS = sys.platform.startswith("win")
 IS_LINUX = sys.platform.startswith("linux")
@@ -102,6 +106,21 @@ def colorize_depth(depth_u16, depth_scale: float = 0.001,
     valid = (depth_u16 > 100) & (depth_u16 < 8000) & (depth_u16 != 65535)
     out[~valid] = 0
     return out
+
+
+_DEPTH_LUT: Dict[Any, Any] = {}
+
+def colorize_depth_fast(depth_u16, depth_scale: float = 0.001,
+                        min_m: float = DEPTH_MIN_M, max_m: float = DEPTH_MAX_M):
+    key = (round(float(depth_scale), 9), min_m, max_m)
+    lut = _DEPTH_LUT.get(key)
+    if lut is None:
+        ramp = np.arange(65536, dtype=np.uint16).reshape(256, 256)
+        lut = colorize_depth(ramp, depth_scale, min_m, max_m).reshape(65536, 3)
+        _DEPTH_LUT[key] = lut
+    if depth_u16.dtype != np.uint16:
+        depth_u16 = depth_u16.astype(np.uint16)
+    return lut[depth_u16]
 
 
 def pseudo_depth(bgr):
@@ -173,7 +192,43 @@ class FFmpegV4L2Capture:
             self.thread_d = threading.Thread(target=self._worker_depth, daemon=True, name="ffmpeg-v4l2-d")
             self.thread_d.start()
 
+    def _worker_color_rs(self):
+        """Read the pipe with os.read and keep only the NEWEST complete frame."""
+        fsize = self.cw * self.ch * 3
+        fd = self.proc_c.stdout.fileno()
+        buf = bytearray()
+        while self.running and self.proc_c is not None:
+            try:
+                chunk = os.read(fd, 1 << 20)
+            except Exception:
+                break
+            if not chunk:
+                break                                   # ffmpeg exited
+            buf += chunk
+            try:
+                while select.select([fd], [], [], 0)[0]:   # slurp what is already waiting
+                    more = os.read(fd, 1 << 20)
+                    if not more:
+                        break
+                    buf += more
+            except Exception:
+                pass
+            n = len(buf) // fsize
+            if n < 1:
+                continue
+            raw = bytes(buf[(n - 1) * fsize:n * fsize])
+            del buf[:n * fsize]
+            self.dropped_frames += n - 1
+            img = np.frombuffer(raw, dtype=np.uint8).reshape((self.ch, self.cw, 3)).copy()
+            if self.ch > 100:   # remove RealSense bottom register scanlines (same as original)
+                img = cv2.resize(img[:-8, :], (self.cw, self.ch), interpolation=cv2.INTER_LINEAR)
+            with self.lock:
+                self.latest_rgb = img
+                self.frame_seq += 1
+
     def _worker_color(self):
+        if self.is_realsense:
+            return self._worker_color_rs()
         fsize = self.cw * self.ch * 3
         while self.running and self.proc_c is not None:
             raw = self.proc_c.stdout.read(fsize)
@@ -262,6 +317,10 @@ class CameraManager:
         self._depth_scale_m = 0.001          # metres per raw depth unit (set per camera)
         self._v4l2_role_cache: Dict[str, str] = {}
         self._synthetic = False
+        self._cached_depth_raw = None   # was used but never initialised -> AttributeError
+        self._depth_req_t = 0.0         # last time a depth/side_by_side frame was requested
+        self._rs_color_fmt = None
+        self._rs_usb = ""
 
         self.is_running = False
         self.thread: Optional[threading.Thread] = None
@@ -399,15 +458,8 @@ class CameraManager:
         if rs_color:
             nid = rs_color["id"]
             final_devices.append({
-                "id": nid, "name": f"Camera Port 1: RGB Color Camera ({nid})",
+                "id": nid, "name": f"Intel RealSense - RGB + Depth ({nid})",
                 "type": "realsense", "role": "color", "has_rgb": True, "has_depth": True,
-                "default_res": "640x480", "accessible": os.access(nid, os.R_OK | os.W_OK)
-            })
-        if rs_depth:
-            nid = rs_depth["id"]
-            final_devices.append({
-                "id": nid, "name": f"Camera Port 2: 3D Depth Sensor ({nid})",
-                "type": "realsense", "role": "depth", "has_rgb": False, "has_depth": True,
                 "default_res": "640x480", "accessible": os.access(nid, os.R_OK | os.W_OK)
             })
 
@@ -538,7 +590,9 @@ class CameraManager:
 
             if CV2_AVAILABLE:
                 try:
-                    devices += self._probe_indices()
+                    sdk_rs = any(d["type"] == "realsense" for d in devices)
+                    devices += [d for d in self._probe_indices()
+                                if not (sdk_rs and d["type"] == "realsense")]
                 except Exception as e:
                     self.last_error = f"USB enumeration failed: {e}"
 
@@ -820,6 +874,23 @@ class CameraManager:
             raise RuntimeError(f"Could not connect to network stream: {url}")
         self.cap = cap
 
+    @staticmethod
+    def _tune_realsense_latency(dev):
+        try:
+            sensors = dev.query_sensors()
+        except Exception:
+            return
+        for sen in sensors:
+            try:
+                sen.set_option(rs.option.frames_queue_size, 2)          # shallow on-camera queue
+            except Exception:
+                pass
+            try:
+                if "rgb" in sen.get_info(rs.camera_info.name).lower():
+                    sen.set_option(rs.option.auto_exposure_priority, 0)  # keep FPS in dim light
+            except Exception:
+                pass
+
     def _open_realsense(self, device_id, width, height, fps):
         if not REALSENSE_AVAILABLE:
             raise RuntimeError("pyrealsense2 is not installed - RealSense depth needs it. "
@@ -840,46 +911,65 @@ class CameraManager:
         if target_dev is None and devs.size() > 0:
             target_dev = devs[0]
 
-        # Try supported resolution and framerate combinations across rgb8, yuyv, bgr8
-        # (Fixes "Couldn't resolve requests" on USB 2.1 ports)
-        attempts = [(width, height, fps), (640, 480, 30), (640, 480, 15), (640, 360, 30), (424, 240, 15)]
+        attempts = [(width, height, fps), (640, 480, 30), (640, 480, 15), (640, 360, 30), (424, 240, 15), (424, 240, 6)]
         color_formats = [rs.format.rgb8, rs.format.yuyv, rs.format.bgr8]
         last = None
-        
-        for (w, h, f) in dict.fromkeys(attempts):
-            for fmt in color_formats:
-                pipe = rs.pipeline()
-                cfg = rs.config()
-                if target_dev:
-                    cfg.enable_device(target_dev.get_info(rs.camera_info.serial_number))
-                cfg.enable_stream(rs.stream.color, w, h, fmt, f)
-                cfg.enable_stream(rs.stream.depth, w, h, rs.format.z16, f)
-                try:
-                    prof = pipe.start(cfg)
-                    frames = pipe.wait_for_frames(1500)
-                    if not frames:
-                        pipe.stop()
+
+        for reset_attempt in range(2):
+            for (w, h, f) in dict.fromkeys(attempts):
+                for fmt in color_formats:
+                    pipe = rs.pipeline()
+                    cfg = rs.config()
+                    if target_dev:
+                        cfg.enable_device(target_dev.get_info(rs.camera_info.serial_number))
+                    cfg.enable_stream(rs.stream.color, w, h, fmt, f)
+                    cfg.enable_stream(rs.stream.depth, w, h, rs.format.z16, f)
+                    try:
+                        prof = pipe.start(cfg)
+                        frames = pipe.wait_for_frames(1500)
+                        if not frames:
+                            pipe.stop()
+                            continue
+                    except Exception as e:
+                        last = e
+                        try: pipe.stop()
+                        except Exception: pass
                         continue
-                except Exception as e:
-                    last = e
-                    try: pipe.stop()
-                    except Exception: pass
-                    continue
-                self.rs_pipeline = pipe
-                self._rs_color_fmt = fmt
-                try:
-                    self.rs_align = rs.align(rs.stream.color)
-                except Exception:
-                    self.rs_align = None
-                try:
-                    self.rs_depth_scale = prof.get_device().first_depth_sensor().get_depth_scale()
-                    self._depth_scale_m = self.rs_depth_scale
-                except Exception:
-                    self.rs_depth_scale = 0.001
-                    self._depth_scale_m = 0.001
-                self.width, self.height, self.target_fps = w, h, f
-                self.has_depth_hardware = True
-                return
+
+                    self.rs_pipeline = pipe
+                    self._rs_color_fmt = fmt
+                    try:
+                        self.rs_align = rs.align(rs.stream.color)
+                    except Exception:
+                        self.rs_align = None
+
+                    dev = prof.get_device() if hasattr(prof, "get_device") else target_dev
+                    try:
+                        self.rs_depth_scale = dev.first_depth_sensor().get_depth_scale()
+                        self._depth_scale_m = self.rs_depth_scale
+                    except Exception:
+                        self.rs_depth_scale = 0.001
+                        self._depth_scale_m = 0.001
+
+                    self._tune_realsense_latency(dev)
+
+                    try:
+                        self._rs_usb = dev.get_info(rs.camera_info.usb_type_descriptor)
+                    except Exception:
+                        self._rs_usb = ""
+
+                    if self._rs_usb.startswith("2"):
+                        self.last_error = "RealSense is on USB 2.x - use a USB 3 port/cable for smooth 30 FPS RGB + Depth."
+
+                    self.width, self.height, self.target_fps = w, h, f
+                    self.has_depth_hardware = True
+                    return
+
+            if reset_attempt == 0:
+                ret = self._reset_realsense(target_dev)
+                if ret is None:
+                    break
+                target_dev = ret
 
         raise RuntimeError(f"RealSense could not start RGB+Depth pipeline: {last}. Check USB connection.")
 
@@ -972,6 +1062,7 @@ class CameraManager:
             self.cap = None
         self._stop_depth_pipe()
         self._synthetic = False
+        self._cached_depth_raw = None
         self.is_connected = False
         self.has_depth_hardware = False
         with self.lock:
@@ -1014,27 +1105,34 @@ class CameraManager:
                 elif self.rs_pipeline:
                     frames = self.rs_pipeline.wait_for_frames(2000 if first else 500)
                     first = False
-                    if self.rs_align:
+                    # LATENCY: drop all older queued framesets, work on the newest
+                    for _ in range(8):
+                        newer = self.rs_pipeline.poll_for_frames()
+                        if not newer:
+                            break
+                        frames = newer
+                    # align/copy depth only while a depth view is being watched
+                    want_depth = self.stream_mode != "rgb" or (time.time() - self._depth_req_t) < 2.0
+                    if want_depth and self.rs_align:
                         try:
                             frames = self.rs_align.process(frames)
                         except Exception:
                             pass
                     c = frames.get_color_frame()
-                    d = frames.get_depth_frame()
-                    if d:
-                        self._cached_depth_raw = np.asanyarray(d.get_data()).copy()
+                    if want_depth:
+                        d = frames.get_depth_frame()
+                        if d:
+                            self._cached_depth_raw = np.asanyarray(d.get_data()).copy()
                     if c:
-                        raw_rgb = np.asanyarray(c.get_data()).copy()
+                        raw_rgb = np.asanyarray(c.get_data())
                         fmt = getattr(self, "_rs_color_fmt", None)
                         if fmt == rs.format.rgb8:
                             rgb = cv2.cvtColor(raw_rgb, cv2.COLOR_RGB2BGR)
                         elif fmt == rs.format.yuyv:
                             rgb = cv2.cvtColor(raw_rgb, cv2.COLOR_YUV2BGR_YUY2)
                         else:
-                            rgb = raw_rgb
-                        self._publish(rgb, None, self._cached_depth_raw)
-                    elif d and self.latest_rgb is not None:
-                        self._publish(self.latest_rgb, None, self._cached_depth_raw)
+                            rgb = raw_rgb.copy()
+                        self._publish(rgb, None, self._cached_depth_raw if want_depth else None)
                 elif self.ob_pipeline:
                     frames = self.ob_pipeline.wait_for_frames(500)
                     if frames is None:
@@ -1115,6 +1213,8 @@ class CameraManager:
             return None
         if mode not in STREAM_MODES:
             mode = "rgb"
+        if mode != "rgb":
+            self._depth_req_t = time.time()   # tells the RealSense worker depth is being watched
         with self.lock:
             if self.latest_rgb is None:
                 return None
@@ -1124,6 +1224,13 @@ class CameraManager:
             rgb = self.latest_rgb
             raw_depth = self.latest_depth_raw
             scale_m = self._depth_scale_m
+        if mode != "rgb" and self.rs_pipeline is not None and raw_depth is None:
+            for _ in range(40):               # wait <= 0.4 s for the first aligned depth frame
+                time.sleep(0.01)
+                with self.lock:
+                    raw_depth = self.latest_depth_raw
+                if raw_depth is not None:
+                    break
         frame = _as_bgr8(rgb)
         if self.brightness != 50 or self.contrast != 50:
             frame = cv2.convertScaleAbs(frame, alpha=self.contrast / 50.0, beta=(self.brightness - 50) * 1.5)
@@ -1131,7 +1238,7 @@ class CameraManager:
         def labelled_depth():
             # Built ONLY on demand (depth / side_by_side) - never per captured frame.
             if raw_depth is not None:
-                d = colorize_depth(raw_depth, scale_m)
+                d = (colorize_depth_fast if self.camera_type == "realsense" else colorize_depth)(raw_depth, scale_m)
             else:
                 d = pseudo_depth(frame)
                 cv2.putText(d, "PSEUDO-DEPTH (luminance, not metric)", (10, 24),
@@ -1174,7 +1281,7 @@ class CameraManager:
             "depth_is_real": self.has_depth_hardware, "stream_mode": self.stream_mode,
             "dropped_frames": self.dropped_frames, "brightness": self.brightness,
             "contrast": self.contrast, "exposure": self.exposure, "last_error": self.last_error,
-            "frame_seq": self.frame_seq,
+            "frame_seq": self.frame_seq, "usb_type": self._rs_usb,
         }
 
 

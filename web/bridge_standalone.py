@@ -105,29 +105,27 @@ _JUNK_PORTS: Set[str] = set()   # Bluetooth / onboard UARTs: listed, but never a
 
 def list_available_serial_ports() -> List[str]:
     """Serial ports on Windows (COM*), Linux (ttyACM/ttyUSB) and macOS (cu.usb*).
-    USB adapters first; Bluetooth / legacy onboard ports last so auto-pick never grabs them."""
-    ranked = []
+    Filters out dummy onboard UARTs (/dev/ttyS*) and Bluetooth ports."""
+    ports = []
     try:
         for p in serial.tools.list_ports.comports():
             desc = f"{p.description or ''} {p.hwid or ''}".lower()
-            usb = p.vid in _PREFERRED_VIDS
-            junk = "bluetooth" in desc or "bthenum" in desc or p.device.startswith(("/dev/ttyS", "/dev/ttyAMA"))
-            if junk:
-                _JUNK_PORTS.add(p.device)
-            ranked.append((0 if usb else (2 if junk else 1), p.device))
+            if p.device.startswith(("/dev/ttyS", "/dev/ttyAMA")) or "bluetooth" in desc:
+                continue
+            ports.append(p.device)
     except Exception:
         pass
-    if not ranked:
+    if not ports:
         if sys.platform.startswith("win"):
-            return []   # blind COM1..32 guesses made auto-connect pick non-existent ports
+            return []
         for pat in ("/dev/ttyACM*", "/dev/ttyUSB*", "/dev/cu.usb*"):
-            ranked += [(0, d) for d in glob.glob(pat)]
-    ranked.sort()
+            ports += glob.glob(pat)
     seen, out = set(), []
-    for _, dev in ranked:
-        if dev not in seen:
-            seen.add(dev); out.append(dev)
-    return out
+    for dev in ports:
+        if dev not in seen and not dev.startswith(("/dev/ttyS", "/dev/ttyAMA")):
+            seen.add(dev)
+            out.append(dev)
+    return sorted(out)
 
 
 def serial_permission_hint(port: str) -> str:
@@ -158,12 +156,12 @@ def save_zero_position(positions: Dict[str, float]):
 def load_home_position() -> Dict[str, float]:
     home_file = ROOT_DIR / "home_position.txt"
     pos = {
-        "shoulder_pan": 0.88,
-        "shoulder_lift": -104.62,
-        "elbow_flex": 100.57,
-        "wrist_flex": 59.96,
-        "wrist_roll": 1.71,
-        "gripper": 3.22
+        "shoulder_pan": -9.05,
+        "shoulder_lift": -107.16,
+        "elbow_flex": 98.37,
+        "wrist_flex": 72.70,
+        "wrist_roll": 175.78,
+        "gripper": 0.00
     }
     if home_file.is_file():
         try:
@@ -178,14 +176,25 @@ def load_home_position() -> Dict[str, float]:
 
 
 def load_zero_position() -> Dict[str, float]:
-    return {
-        "shoulder_pan": 0.0,
-        "shoulder_lift": 0.0,
-        "elbow_flex": 0.0,
-        "wrist_flex": 0.0,
-        "wrist_roll": 0.0,
-        "gripper": 0.0
+    zero_file = ROOT_DIR / "zero_position.txt"
+    pos = {
+        "shoulder_pan": -3.34,
+        "shoulder_lift": -9.05,
+        "elbow_flex": 11.16,
+        "wrist_flex": 11.08,
+        "wrist_roll": 175.78,
+        "gripper": 0.00
     }
+    if zero_file.is_file():
+        try:
+            for line in zero_file.read_text().splitlines():
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    k = k.strip().replace(".pos", "")
+                    pos[k] = float(v.strip())
+        except Exception:
+            pass
+    return pos
 
 
 class StandaloneSTS3215Driver:
@@ -197,7 +206,7 @@ class StandaloneSTS3215Driver:
         self.is_connected = False
         self._ser: Optional[serial.Serial] = None
         self.calibration = DEFAULT_CALIBRATION
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
 
     def connect(self, port: Optional[str] = None, baudrate: Optional[int] = None) -> bool:
         with self.lock:
@@ -220,13 +229,15 @@ class StandaloneSTS3215Driver:
                 return False
 
     def disconnect(self):
-        if self._ser is not None and self._ser.is_open:
-            try:
-                self._ser.close()
-            except Exception:
-                pass
-            self._ser = None
-        self.is_connected = False
+        with self.lock:
+            if self._ser is not None and self._ser.is_open:
+                try:
+                    self._sync_write_torque_locked(False)
+                    self._ser.close()
+                except Exception:
+                    pass
+                self._ser = None
+            self.is_connected = False
 
     def _sync_write_torque_locked(self, enable: bool):
         if not self._ser or not self._ser.is_open: return
@@ -370,7 +381,9 @@ active_targets: Dict[str, float] = {}
 is_recording = False
 record_file = None
 record_writer = None
+current_record_filename = ""
 sim_positions: Dict[str, float] = {}
+last_actual_positions: Dict[str, float] = {}
 
 calib_recording_ranges = False
 calib_homing_offsets: Dict[str, int] = {}
@@ -469,16 +482,17 @@ class CameraStreamHandler(BaseApiHandler):
         self.set_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
         self.set_header("Cache-Control", "no-cache, no-store, must-revalidate")
         last_seq = -1
+        loop = tornado.ioloop.IOLoop.current()
         while self._is_active:
             if not camera_manager.is_connected:
                 frame_bytes = camera_manager.get_placeholder_jpeg("Camera Standby - Click Connect")
                 last_seq = -1
             elif camera_manager.frame_seq == last_seq:
-                yield tornado.gen.sleep(0.01)      # nothing new: don't re-send / re-encode
+                yield tornado.gen.sleep(0.004)      # nothing new: don't re-send / re-encode
                 continue
             else:
                 last_seq = camera_manager.frame_seq
-                frame_bytes = camera_manager.get_jpeg_frame(mode=mode)
+                frame_bytes = yield loop.run_in_executor(None, camera_manager.get_jpeg_frame, mode)
             if frame_bytes:
                 try:
                     self.write(b"--frame\r\nContent-Type: image/jpeg\r\n"
@@ -516,12 +530,14 @@ class ConnectHandler(BaseApiHandler):
             port = req.get("port", driver.port)
             baud = int(req.get("baudrate", 1000000))
             ok = driver.connect(port, baud)
-            self.write(json.dumps({
+            res = {
                 "success": ok,
                 "port": port,
                 "online_count": 6 if ok else 0,
                 "message": f"Connected to {port} at {baud} baud" if ok else f"Failed to connect to {port}"
-            }))
+            }
+            broadcast_message({"type": "connect_result", "result": res})
+            self.write(json.dumps(res))
         except Exception as e:
             self.write(json.dumps({"success": False, "message": str(e)}))
 
@@ -530,6 +546,7 @@ class DisconnectHandler(BaseApiHandler):
     def post(self):
         self.set_header("Content-Type", "application/json")
         driver.disconnect()
+        broadcast_message({"type": "disconnect_result", "result": True, "robot_connected": False, "online_count": 0})
         self.write(json.dumps({"success": True, "message": "Robot disconnected."}))
 
 
@@ -546,6 +563,11 @@ class TorqueHandler(BaseApiHandler):
 
 
 class CalibrateHandler(BaseApiHandler):
+    def get(self):
+        self.set_header("Content-Type", "application/json")
+        calib = load_calibration()
+        self.write(json.dumps({"success": True, "calibration": calib}))
+
     def post(self):
         global calib_recording_ranges, calib_homing_offsets, calib_raw_ticks, calib_ranges
         self.set_header("Content-Type", "application/json")
@@ -630,6 +652,20 @@ class CalibrateHandler(BaseApiHandler):
                     calib_data[c["name"]] = c
                 self.write(json.dumps({"success": True, "calibration": calib_data}))
 
+            elif action == "upload_external" or "calibration" in req:
+                calib_payload = req.get("calibration") if "calibration" in req else req
+                if isinstance(calib_payload, dict) and "action" in calib_payload:
+                    calib_payload = {k: v for k, v in calib_payload.items() if k != "action"}
+                calib_file = ROOT_DIR / "so101_calibration.json"
+                with open(calib_file, "w", encoding="utf-8") as f:
+                    json.dump(calib_payload, f, indent=2)
+                driver.calibration = load_calibration()
+                self.write(json.dumps({
+                    "success": True,
+                    "calibration": driver.calibration,
+                    "message": "External calibration saved and applied to robot."
+                }))
+
             else:
                 self.write(json.dumps({"success": False, "message": f"Unknown action: {action}"}))
 
@@ -650,6 +686,25 @@ class RecordingsListHandler(BaseApiHandler):
                     "created": datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
                 })
         self.write(json.dumps({"recordings": recordings}))
+
+    def post(self):
+        self.set_header("Content-Type", "application/json")
+        try:
+            req = json.loads(self.request.body.decode("utf-8")) if self.request.body else {}
+            filename = req.get("filename", "")
+            content = req.get("content", "")
+            if not filename or not content:
+                self.write(json.dumps({"success": False, "message": "Missing filename or content"}))
+                return
+            safe_name = Path(filename).name
+            if not safe_name.endswith(".csv"):
+                safe_name += ".csv"
+            fpath = DATA_DIR / safe_name
+            with open(fpath, "w", encoding="utf-8", newline="") as fp:
+                fp.write(content)
+            self.write(json.dumps({"success": True, "filename": safe_name, "message": f"Saved {safe_name} to server."}))
+        except Exception as e:
+            self.write(json.dumps({"success": False, "message": str(e)}))
 
 
 class DatasetInfoHandler(BaseApiHandler):
@@ -759,7 +814,7 @@ def broadcast_message(msg_dict):
         except Exception:
             pass
 
-def _playback_thread_fn(frames, filename, speed_multiplier):
+def _playback_thread_fn(frames, filename, speed_multiplier, loop_count=1):
     global is_playing_trajectory, playback_stop_flag
     try:
         if driver.is_connected:
@@ -837,12 +892,18 @@ def start_dataset_playback(filename, speed_multiplier=1.0, loop_count=1):
     global is_playing_trajectory, playback_stop_flag, playback_thread
     if is_playing_trajectory:
         return False, 'Playback already active'
-    allowed, reason = teleop_ctrl.can_execute_movement()
-    if not allowed:
-        return False, reason
+    if teleop_ctrl.is_emergency_stopped:
+        return False, "EMERGENCY STOP is active! Please reset E-STOP first."
+    teleop_ctrl.set_motor_power(True)
+    driver.set_torque(True)
     fpath = DATA_DIR / filename
     if not fpath.exists():
-        return False, f'File not found: {filename}'
+        for cand in [ROOT_DIR / "data" / filename, ROOT_DIR / filename, ROOT_DIR / "web" / filename]:
+            if cand.exists():
+                fpath = cand
+                break
+        if not fpath.exists():
+            return False, f'File not found: {filename}'
     frames = []
     try:
         with open(fpath, 'r', newline='') as fp:
@@ -961,7 +1022,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                 port = data.get("port", driver.port)
                 baud = int(data.get("baudrate", 1000000))
                 ok = driver.connect(port, baud)
-                self.write_message(json.dumps({
+                res_payload = {
                     "type": "connect_result",
                     "result": {
                         "success": ok,
@@ -969,11 +1030,20 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                         "port": driver.port or port,
                         "message": f"Connected to {port} at {baud} baud." if ok else f"Failed to connect to {port}"
                     }
-                }))
+                }
+                broadcast_message(res_payload)
+                self.write_message(json.dumps(res_payload))
 
             elif action == "disconnect_robot":
                 driver.disconnect()
-                self.write_message(json.dumps({"type": "disconnect_result", "result": True}))
+                res_payload = {
+                    "type": "disconnect_result",
+                    "result": True,
+                    "robot_connected": False,
+                    "online_count": 0
+                }
+                broadcast_message(res_payload)
+                self.write_message(json.dumps(res_payload))
 
             elif action == "torque":
                 enable = bool(data.get("enable", True))
@@ -998,10 +1068,11 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                 }))
 
             elif action == "command":
-                allowed, reason = teleop_ctrl.can_execute_movement()
-                if not allowed:
-                    self.write_message(json.dumps({"type": "motion_blocked", "reason": reason}))
+                if teleop_ctrl.is_emergency_stopped:
+                    self.write_message(json.dumps({"type": "motion_blocked", "reason": "EMERGENCY STOP is active! Please reset E-STOP."}))
                 else:
+                    teleop_ctrl.set_motor_power(True)
+                    driver.set_torque(True)
                     joint = data.get("joint")
                     pos_deg = float(data.get("position_deg", 0.0))
                     speed = float(data.get("speed", 1.5))
@@ -1012,10 +1083,11 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                         sim_positions[joint] = pos_deg
 
             elif action == "multi_command":
-                allowed, reason = teleop_ctrl.can_execute_movement()
-                if not allowed:
-                    self.write_message(json.dumps({"type": "motion_blocked", "reason": reason}))
+                if teleop_ctrl.is_emergency_stopped:
+                    self.write_message(json.dumps({"type": "motion_blocked", "reason": "EMERGENCY STOP is active! Please reset E-STOP."}))
                 else:
+                    teleop_ctrl.set_motor_power(True)
+                    driver.set_torque(True)
                     pos_dict = data.get("positions", {})
                     speed = float(data.get("speed", 1.5))
                     for k, v in pos_dict.items():
@@ -1027,39 +1099,38 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                             sim_positions[k] = float(v)
 
             elif action == "home":
-                allowed, reason = teleop_ctrl.can_execute_movement()
-                if not allowed:
-                    self.write_message(json.dumps({"type": "motion_blocked", "reason": reason}))
+                speed = float(data.get("speed", 1.2))
+                driver.set_torque(True)
+                teleop_ctrl.set_motor_power(True)
+                home_pos = load_home_position()
+                for k, v in home_pos.items():
+                    active_targets[k] = float(v)
+                if driver.is_connected:
+                    driver.sync_write_all(active_targets, speed)
                 else:
-                    speed = float(data.get("speed", 1.2))
-                    home_pos = load_home_position()
                     for k, v in home_pos.items():
-                        active_targets[k] = float(v)
-                    if driver.is_connected:
-                        driver.sync_write_all(active_targets, speed)
-                    else:
-                        for k, v in home_pos.items():
-                            sim_positions[k] = float(v)
+                        sim_positions[k] = float(v)
 
             elif action == "zero":
-                allowed, reason = teleop_ctrl.can_execute_movement()
-                if not allowed:
-                    self.write_message(json.dumps({"type": "motion_blocked", "reason": reason}))
+                speed = float(data.get("speed", 1.2))
+                driver.set_torque(True)
+                teleop_ctrl.set_motor_power(True)
+                zero_pos = load_zero_position()
+                for k, v in zero_pos.items():
+                    active_targets[k] = float(v)
+                if driver.is_connected:
+                    driver.sync_write_all(active_targets, speed)
                 else:
-                    speed = float(data.get("speed", 1.2))
-                    zero_pos = load_zero_position()
                     for k, v in zero_pos.items():
-                        active_targets[k] = float(v)
-                    if driver.is_connected:
-                        driver.sync_write_all(active_targets, speed)
-                    else:
-                        for k, v in zero_pos.items():
-                            sim_positions[k] = float(v)
+                        sim_positions[k] = float(v)
 
             elif action == "start_record":
-                prefix = data.get("prefix", "manual_recording")
+                global current_record_filename
+                prefix = data.get("prefix", "manual_lead_through")
                 driver.set_torque(False)
+                teleop_ctrl.set_motor_power(False)
                 fname = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                current_record_filename = fname
                 fpath = DATA_DIR / fname
                 record_file = open(fpath, "w", newline="")
                 record_writer = csv.writer(record_file)
@@ -1069,12 +1140,17 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
             elif action == "stop_record":
                 is_recording = False
+                saved_name = current_record_filename
                 if record_file:
-                    record_file.close()
+                    try:
+                        record_file.close()
+                    except Exception:
+                        pass
                     record_file = None
                     record_writer = None
                 driver.set_torque(True)
-                self.write_message(json.dumps({"type": "record_status", "recording": False, "result": True}))
+                teleop_ctrl.set_motor_power(True)
+                self.write_message(json.dumps({"type": "record_status", "recording": False, "result": True, "filename": saved_name}))
 
             elif action == "play_dataset":
                 fname = data.get("filename", "")
@@ -1125,8 +1201,12 @@ def poll_and_broadcast():
             volt = fb["voltage_v"]
             temp = fb["temperature_c"]
             ticks = fb["encoder_ticks"]
+            last_actual_positions[name] = act_deg
         else:
-            act_deg = sim_positions.get(name, 0.0)
+            if driver.is_connected and name in last_actual_positions:
+                act_deg = last_actual_positions[name]
+            else:
+                act_deg = sim_positions.get(name, 0.0)
             volt = 5.0
             temp = 28
             ticks = driver.deg_to_ticks(sid, act_deg)
@@ -1163,7 +1243,7 @@ def poll_and_broadcast():
     t_payload = {
         "timestamp": now,
         "robot_connected": driver.is_connected,
-        "online_count": len(feedback) if driver.is_connected else 6,
+        "online_count": len(feedback) if driver.is_connected else 0,
         "port": driver.port or "/dev/ttyACM0",
         "joints": telemetry_joints,
         "calib_recording_ranges": calib_recording_ranges,
@@ -1230,7 +1310,10 @@ def main():
         os.environ["SO101_TEST_CAMERA"] = "1"
     ports = list_available_serial_ports()
     target_port = args.port
-    if not target_port and ports and ports[0] not in _JUNK_PORTS:
+    if target_port and str(target_port).isdigit():
+        args.web_port = int(target_port)
+        target_port = None
+    elif not target_port and ports and ports[0] not in _JUNK_PORTS:
         target_port = ports[0]
     elif not target_port:
         target_port = None

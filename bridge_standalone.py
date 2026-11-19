@@ -482,16 +482,17 @@ class CameraStreamHandler(BaseApiHandler):
         self.set_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
         self.set_header("Cache-Control", "no-cache, no-store, must-revalidate")
         last_seq = -1
+        loop = tornado.ioloop.IOLoop.current()
         while self._is_active:
             if not camera_manager.is_connected:
                 frame_bytes = camera_manager.get_placeholder_jpeg("Camera Standby - Click Connect")
                 last_seq = -1
             elif camera_manager.frame_seq == last_seq:
-                yield tornado.gen.sleep(0.01)      # nothing new: don't re-send / re-encode
+                yield tornado.gen.sleep(0.004)      # nothing new: don't re-send / re-encode
                 continue
             else:
                 last_seq = camera_manager.frame_seq
-                frame_bytes = camera_manager.get_jpeg_frame(mode=mode)
+                frame_bytes = yield loop.run_in_executor(None, camera_manager.get_jpeg_frame, mode)
             if frame_bytes:
                 try:
                     self.write(b"--frame\r\nContent-Type: image/jpeg\r\n"
@@ -1309,7 +1310,10 @@ def main():
         os.environ["SO101_TEST_CAMERA"] = "1"
     ports = list_available_serial_ports()
     target_port = args.port
-    if not target_port and ports and ports[0] not in _JUNK_PORTS:
+    if target_port and str(target_port).isdigit():
+        args.web_port = int(target_port)
+        target_port = None
+    elif not target_port and ports and ports[0] not in _JUNK_PORTS:
         target_port = ports[0]
     elif not target_port:
         target_port = None

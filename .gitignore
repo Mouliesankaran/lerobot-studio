@@ -79,6 +79,9 @@ data/rosbag/*
 !data/rosbag/.gitkeep
 !data/processed/.gitkeep
 
+# Local offline backups
+local_backups/
+
 # Sensitive keys or credentials
 *.pem
 *.key
