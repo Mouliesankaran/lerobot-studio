@@ -1,5 +1,21 @@
-# SO-101 Robotics Studio Requirements
+# ==============================================================================
+# SO-101 Robotics & Vision Suite - Python Dependencies
+# ==============================================================================
+
+# Core Hardware Communication & Web Bridge
 pyserial>=3.5
 tornado>=6.2
-opencv-python>=4.5.0
 numpy>=1.22.0
+opencv-python>=4.5.0
+
+# Cameras (Intel RealSense RGB + 3D Depth)
+pyrealsense2
+
+# LeRobot & Hugging Face Robotics AI Framework
+torch>=2.2.0
+torchvision
+huggingface-hub>=0.20.0
+safetensors>=0.4.0
+einops>=0.7.0
+diffusers>=0.27.0
+lerobot>=0.1.0

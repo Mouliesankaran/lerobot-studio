@@ -18,6 +18,31 @@
 | **Phase 5** | Mathematical System Identification | **PENDING** | First/second-order model fitting, delay estimation, parameter estimation report. |
 | **Phase 6** | MuJoCo Servo Dynamics Simulation | **PENDING** | MuJoCo MJCF model with identified actuator dynamics, damping, and limits. |
 | **Phase 7** | Real Hardware vs MuJoCo Validation | **PENDING** | Real vs Sim trajectory tracking, RMSE < threshold, comparative validation report. |
+| **Phase 8** | AI Model Deployment & Evaluation (AIDeploy) | **BACKED UP & PLANNED** | Multi-simulator checkpoints (.pt, .msgpack), Model Adapters, tracking error & latency benchmarking. |
+| **Phase 9** | LeRobot Dual-Camera AI Training Studio | **PLANNED** | Dual-camera visuomotor pipeline (Environment Cam + Gripper Cam), teleop demo recording, ACT/Diffusion training & autonomous execution. |
+
+---
+
+## 4. AI & LeRobot Dual-Camera Roadmap Notes
+
+### A. AI Model Deployment & Evaluation (AIDeploy):
+- **Status:** Backed up in `local_backups/ai_deploy_backup/` (`ai_deployment_backend.py`, `new_ai_deploy_*.html/css/js`).
+- **Core Functionality:** Takes trained checkpoints from MuJoCo, Isaac Sim, Genesis, and Gazebo (.msgpack, .pt, .onnx), converts actions through modular adapters, executes on real SO-101, and benchmarks tracking error, bus latency, and sim-to-real gap metrics.
+
+### B. LeRobot Dual-Camera Visuomotor Training Studio:
+- **Core Functionality:** Zero-simulation, direct real-world robot learning using Hugging Face LeRobot.
+- **Dual-Camera Architecture:**
+  1. **Camera 1 (Workspace / Environment Cam):** Overhead/side tripod view providing global scene context (table, objects, target containers).
+  2. **Camera 2 (Wrist / Gripper Cam):** Eye-in-hand mount on SO-101 gripper providing close-up occlusion-free visual feedback for precise grasping.
+- **Workflow Pipeline:**
+  1. Synchronized 30 FPS multi-stream recording (Environment Frames + Gripper Frames + 6x Joint Angles).
+  2. Dataset formatting into standard Hugging Face LeRobot `.parquet` format.
+  3. One-click ACT (Action Chunking Transformer) & Diffusion Policy training on local NVIDIA GPU (GTX 1650).
+  4. Real-time autonomous closed-loop inference directly on physical SO-101 arm.
+
+### C. Unified Conda Environment (`so101_studio`):
+- Managed via `environment.yml` and `requirements.txt`.
+- Includes PyTorch with CUDA, Hugging Face `lerobot`, `diffusers`, `safetensors`, `pyrealsense2`, `opencv-python`, `tornado`, and `pyserial`.
 
 ---
 

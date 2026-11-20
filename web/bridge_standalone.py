@@ -1267,7 +1267,7 @@ def poll_and_broadcast():
 
 
 def make_app():
-    return tornado.web.Application([
+    handlers = [
         (r"/ws", WebSocketHandler),
         (r"/api/system/info", SystemInfoHandler),
         (r"/api/ports", PortsHandler),
@@ -1291,8 +1291,14 @@ def make_app():
         (r"/api/camera/settings", CameraSettingsHandler),
         (r"/api/camera/snapshot", CameraSnapshotHandler),
         (r"/api/camera/stream", CameraStreamHandler),
-        (r"/(.*)", tornado.web.StaticFileHandler, {"path": str(WEB_DIR), "default_filename": "index.html"}),
-    ])
+    ]
+    try:
+        from ai_deployment_backend import AI_ROUTES
+        handlers.extend(AI_ROUTES)
+    except Exception as e:
+        pass
+    handlers.append((r"/(.*)", tornado.web.StaticFileHandler, {"path": str(WEB_DIR), "default_filename": "index.html"}))
+    return tornado.web.Application(handlers)
 
 
 def main():

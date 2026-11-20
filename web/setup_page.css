@@ -1,0 +1,300 @@
+/* ==========================================================================
+   ROBOT STUDIO SETUP GUIDE DESIGN SYSTEM - NEAT, SPACIOUS & MODERN
+   Clean Cards, Multiline Code Snippets, Step Numbers, Light & Dark Theme
+   ========================================================================== */
+
+#page-setup {
+  display: none;
+  flex-direction: column;
+  gap: 20px;
+  animation: fadeIn 0.2s ease-in-out;
+  max-width: 1140px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 10px;
+}
+#page-setup.active {
+  display: flex !important;
+}
+
+.rs-setup-card {
+  background: var(--card-bg, #0d1527);
+  border: 1px solid var(--border-color, #1a2744);
+  border-radius: 14px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.rs-setup-header {
+  padding: 20px 32px;
+  border-bottom: 1px solid var(--border-color, #1a2744);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.rs-setup-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-main, #f1f5f9);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rs-setup-body {
+  padding: 30px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.rs-setup-lead {
+  font-size: 0.92rem;
+  color: var(--text-muted, #8493ad);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 950px;
+}
+
+/* STATUS SUMMARY BOXES */
+.rs-status-box {
+  background: var(--card-inner, #090e1c);
+  border: 1px solid var(--border-color, #1a2744);
+  border-radius: 10px;
+  padding: 14px 18px;
+  transition: all 0.2s ease;
+}
+.rs-status-lbl {
+  font-size: 0.7rem;
+  color: var(--text-muted, #8493ad);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rs-status-val {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main, #f1f5f9);
+  margin-top: 4px;
+}
+
+/* BUTTONS */
+.rs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 22px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+.rs-btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+}
+.rs-btn-primary:hover {
+  background: #1d4ed8;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+  transform: translateY(-1px);
+}
+
+/* STEP-BY-STEP ORDERED LIST */
+.rs-install-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.rs-step-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rs-step-title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: var(--text-main, #f1f5f9);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rs-step-desc {
+  font-size: 0.84rem;
+  color: var(--text-muted, #8493ad);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* CODE SNIPPET BOX WITH COPY BUTTON */
+.rs-code-box {
+  background: #050811;
+  border: 1px solid var(--border-color, #1a2744);
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px 14px 12px 18px;
+  gap: 16px;
+}
+.rs-code-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: #38bdf8;
+  white-space: pre;
+  word-break: normal;
+  flex: 1;
+  margin: 0;
+}
+.rs-copy-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.rs-copy-btn:hover {
+  background: #1d4ed8;
+}
+.rs-copy-btn.copied {
+  background: #10b981;
+}
+
+/* CONNECTION WIDGET */
+.rs-conn-widget {
+  background: var(--card-inner, #090e1c);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* TIPS & TROUBLESHOOTING BOX */
+.rs-tips-box {
+  background: #090e1c;
+  border: 1px solid #1a2744;
+  border-radius: 10px;
+  padding: 18px 24px;
+}
+.rs-tips-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #38bdf8;
+  margin-bottom: 8px;
+}
+.rs-tips-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.8rem;
+  color: #8493ad;
+  line-height: 1.8;
+}
+.rs-tips-list li {
+  color: #8493ad;
+}
+
+/* ==========================================================================
+   LIGHT THEME SUPPORT FOR SETUP PAGE
+   Ensures 100% clean light appearance when body.theme-light is active
+   ========================================================================== */
+body.theme-light #page-setup .rs-setup-card {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+body.theme-light #page-setup .rs-setup-header {
+  background: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+body.theme-light #page-setup .rs-setup-title {
+  color: #0f172a !important;
+}
+body.theme-light #page-setup .rs-setup-lead {
+  color: #475569 !important;
+}
+body.theme-light #page-setup .rs-status-box {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+body.theme-light #page-setup .rs-status-box .rs-status-lbl {
+  color: #64748b !important;
+}
+body.theme-light #page-setup .rs-status-box .rs-status-val {
+  color: #0f172a !important;
+}
+body.theme-light #page-setup .rs-step-title {
+  color: #0f172a !important;
+}
+body.theme-light #page-setup .rs-step-desc {
+  color: #475569 !important;
+}
+body.theme-light #page-setup .rs-code-box {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+body.theme-light #page-setup .rs-code-text {
+  color: #0f172a !important;
+  font-weight: 600 !important;
+}
+body.theme-light #page-setup .rs-copy-btn {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+body.theme-light #page-setup .rs-copy-btn:hover {
+  background: #1d4ed8 !important;
+}
+body.theme-light #page-setup .rs-copy-btn.copied {
+  background: #10b981 !important;
+}
+body.theme-light #page-setup .rs-conn-widget {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+body.theme-light #page-setup .rs-tips-box {
+  background: #f0fdf4 !important;
+  border-color: #bbf7d0 !important;
+}
+body.theme-light #page-setup .rs-tips-title {
+  color: #16a34a !important;
+}
+body.theme-light #page-setup .rs-tips-list {
+  color: #334155 !important;
+}
+body.theme-light #page-setup .rs-tips-list li {
+  color: #334155 !important;
+}
+
+/* CLEANUP / UNINSTALL BOX */
+.rs-cleanup-box {
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 10px;
+  padding: 18px 24px;
+}
+body.theme-light #page-setup .rs-cleanup-box {
+  background: #fef2f2 !important;
+  border-color: #fecaca !important;
+}
+body.theme-light #page-setup .rs-cleanup-box .rs-code-box {
+  background: #fff5f5 !important;
+  border-color: #fecaca !important;
+}
+body.theme-light #page-setup .rs-cleanup-box .rs-code-text {
+  color: #b91c1c !important;
+}

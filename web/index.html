@@ -8,7 +8,9 @@
   <meta http-equiv="Expires" content="0">
   <title>SO-100 / SO-101 Robotic Arm Control &amp; Calibration</title>
   <link rel="icon" type="image/png" href="logo.png">
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=20261119_1800">
+  <link rel="stylesheet" href="ai_deploy.css?v=20261119_1800">
+  <link rel="stylesheet" href="setup_page.css?v=20261119_1800">
   <style>
     .quick-tiles-grid {
       display: grid !important;
@@ -42,6 +44,813 @@
       scroll-behavior: smooth !important;
     }
   </style>
+<style id="ai-deploy-css">
+/* ==========================================================================
+   ROBOT STUDIO CLEAN INFERENCE DESIGN (OPTION B)
+   Modern Robotics Engineering Layout • Clean, High-Contrast, Card-Based
+   ========================================================================== */
+
+#page-ai-deploy {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+  animation: fadeIn 0.25s ease-in-out;
+}
+#page-ai-deploy.active {
+  display: flex !important;
+}
+
+/* 1. HERO HEADER BANNER */
+.rs-inf-hero {
+  background: linear-gradient(135deg, #0d1527 0%, #070c18 100%);
+  border: 1px solid var(--border-color, #1a2744);
+  border-radius: 12px;
+  padding: 18px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+.rs-inf-hero-header {
+  flex: 1;
+  min-width: 280px;
+}
+.rs-inf-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 4px;
+  padding: 3px 8px;
+  margin-bottom: 6px;
+}
+.rs-inf-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  margin-bottom: 4px;
+}
+.rs-inf-desc {
+  font-size: 0.82rem;
+  color: #8493ad;
+  line-height: 1.4;
+  margin: 0;
+  max-width: 650px;
+}
+.rs-inf-hero-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.rs-stat-box {
+  background: #090e1c;
+  border: 1px solid #1a2744;
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-width: 100px;
+  text-align: center;
+}
+.rs-stat-label {
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #5c6c8c;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 3px;
+}
+.rs-stat-val {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f1f5f9;
+}
+.rs-stat-val.standby { color: #f59e0b; }
+.rs-stat-val.armed { color: #38bdf8; }
+.rs-stat-val.running { color: #10b981; animation: pulseGlow 1.5s infinite; }
+.rs-stat-val.ok { color: #10b981; }
+
+/* 2. MAIN 2-COLUMN GRID */
+.rs-inf-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 1000px) {
+  .rs-inf-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rs-card {
+  background: #0d1527;
+  border: 1px solid #1a2744;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+.rs-card-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid #1a2744;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.rs-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rs-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(37, 99, 235, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+}
+.rs-tag.live {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+.rs-card-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+}
+
+/* FORMS & INPUTS */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.form-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #8493ad;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.form-input, .form-select {
+  background: #090e1c;
+  border: 1px solid #1a2744;
+  border-radius: 6px;
+  color: #f1f5f9;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.form-input:focus, .form-select:focus {
+  border-color: #2563eb;
+}
+.form-hint {
+  font-size: 0.72rem;
+  color: #5c6c8c;
+}
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.rs-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* CHIPS */
+.rs-cam-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rs-chip {
+  background: #090e1c;
+  border: 1px solid #1a2744;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  color: #8493ad;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.rs-chip.active {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.3);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+/* SPEED SLIDER */
+.rs-speed-slider-wrap {
+  background: #090e1c;
+  border: 1px solid #1a2744;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rs-speed-text {
+  font-size: 0.8rem;
+  color: #f1f5f9;
+}
+.rs-speed-text b { color: #38bdf8; }
+
+/* APPROVAL BOX */
+.rs-approval-box {
+  background: #090e1c;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rs-checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #f1f5f9;
+  cursor: pointer;
+  line-height: 1.35;
+}
+.rs-checkbox-label input {
+  margin-top: 2px;
+  cursor: pointer;
+}
+.rs-approval-btn-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.rs-approval-timer {
+  font-size: 0.85rem;
+  color: #10b981;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 6px;
+  padding: 6px 12px;
+}
+
+/* ACTION BUTTONS */
+.rs-action-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+.rs-action-buttons .btn-danger {
+  grid-column: span 2;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-lg {
+  padding: 12px 18px;
+  font-size: 0.95rem;
+}
+.btn-warning {
+  background: #d97706;
+  color: #ffffff;
+}
+.btn-warning:hover:not(:disabled) {
+  background: #b45309;
+}
+.btn-success {
+  background: #10b981;
+  color: #ffffff;
+}
+.btn-success:hover:not(:disabled) {
+  background: #059669;
+}
+.btn-secondary {
+  background: #1a2744;
+  color: #f1f5f9;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: #2a3d66;
+}
+.btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* TELEMETRY CONSOLE */
+.rs-telemetry-console {
+  background: #050811;
+  border: 1px solid #1a2744;
+  border-radius: 6px;
+  padding: 10px 12px;
+  height: 100px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.log-entry.info { color: #8493ad; }
+.log-entry.ok { color: #10b981; }
+.log-entry.warn { color: #f59e0b; }
+.log-entry.err { color: #ef4444; }
+
+/* VISUAL & DYNAMICS GRID */
+.rs-vis-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .rs-vis-grid { grid-template-columns: 1fr; }
+}
+.rs-cam-feed-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+.rs-cam-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #8493ad;
+  text-transform: uppercase;
+}
+.rs-joints-telemetry-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rs-joint-bars {
+  background: #090e1c;
+  border: 1px solid #1a2744;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rs-joint-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  color: #f1f5f9;
+}
+.rs-joint-row span { color: #8493ad; }
+.rs-joint-row b { color: #38bdf8; }
+.rs-joint-row .err-val { font-size: 0.72rem; color: #10b981; font-weight: 700; }
+
+/* AI DEPLOY LIGHT THEME SUPPORT */
+body.theme-light #page-ai-deploy .rs-inf-hero {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+body.theme-light #page-ai-deploy .rs-inf-badge {
+  background: #e0f2fe !important;
+  border-color: #bae6fd !important;
+  color: #0284c7 !important;
+}
+body.theme-light #page-ai-deploy .rs-inf-title {
+  color: #0f172a !important;
+}
+body.theme-light #page-ai-deploy .rs-inf-desc {
+  color: #475569 !important;
+}
+body.theme-light #page-ai-deploy .rs-stat-box {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+body.theme-light #page-ai-deploy .rs-stat-label {
+  color: #64748b !important;
+}
+body.theme-light #page-ai-deploy .rs-stat-val {
+  color: #0f172a !important;
+}
+body.theme-light #page-ai-deploy .rs-card {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+body.theme-light #page-ai-deploy .rs-card-header {
+  background: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+body.theme-light #page-ai-deploy .rs-card-title {
+  color: #0f172a !important;
+}
+body.theme-light #page-ai-deploy .form-label {
+  color: #334155 !important;
+}
+body.theme-light #page-ai-deploy .form-input,
+body.theme-light #page-ai-deploy .form-select {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+body.theme-light #page-ai-deploy .form-hint {
+  color: #64748b !important;
+}
+body.theme-light #page-ai-deploy .rs-chip {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+body.theme-light #page-ai-deploy .rs-chip.active {
+  background: #e0f2fe !important;
+  border-color: #38bdf8 !important;
+  color: #0284c7 !important;
+}
+body.theme-light #page-ai-deploy .rs-speed-slider-wrap {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+body.theme-light #page-ai-deploy .rs-speed-text {
+  color: #0f172a !important;
+}
+body.theme-light #page-ai-deploy .rs-approval-box {
+  background: #fffbeb !important;
+  border-color: #fde68a !important;
+}
+body.theme-light #page-ai-deploy .rs-checkbox-label {
+  color: #0f172a !important;
+}
+body.theme-light #page-ai-deploy .btn-secondary {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+}
+body.theme-light #page-ai-deploy .btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0 !important;
+}
+body.theme-light #page-ai-deploy .rs-telemetry-console {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+body.theme-light #page-ai-deploy .rs-telemetry-console .log-entry.info {
+  color: #334155 !important;
+}
+body.theme-light #page-ai-deploy .rs-joint-bars {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+body.theme-light #page-ai-deploy .rs-joint-row {
+  color: #0f172a !important;
+}
+body.theme-light #page-ai-deploy .rs-joint-row span {
+  color: #475569 !important;
+}
+body.theme-light #page-ai-deploy .rs-cam-feed-wrap {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+body.theme-light #page-ai-deploy #ai-cam-offline-overlay {
+  background: #f8fafc !important;
+}
+
+</style>
+<style id="setup-page-css">
+/* ==========================================================================
+   ROBOT STUDIO SETUP GUIDE DESIGN SYSTEM - NEAT, SPACIOUS & MODERN
+   Clean Cards, Multiline Code Snippets, Step Numbers, Light & Dark Theme
+   ========================================================================== */
+
+#page-setup {
+  display: none;
+  flex-direction: column;
+  gap: 20px;
+  animation: fadeIn 0.2s ease-in-out;
+  max-width: 1140px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 10px;
+}
+#page-setup.active {
+  display: flex !important;
+}
+
+.rs-setup-card {
+  background: var(--card-bg, #0d1527);
+  border: 1px solid var(--border-color, #1a2744);
+  border-radius: 14px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.rs-setup-header {
+  padding: 20px 32px;
+  border-bottom: 1px solid var(--border-color, #1a2744);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.rs-setup-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-main, #f1f5f9);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rs-setup-body {
+  padding: 30px 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.rs-setup-lead {
+  font-size: 0.92rem;
+  color: var(--text-muted, #8493ad);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 950px;
+}
+
+/* STATUS SUMMARY BOXES */
+.rs-status-box {
+  background: var(--card-inner, #090e1c);
+  border: 1px solid var(--border-color, #1a2744);
+  border-radius: 10px;
+  padding: 14px 18px;
+  transition: all 0.2s ease;
+}
+.rs-status-lbl {
+  font-size: 0.7rem;
+  color: var(--text-muted, #8493ad);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.rs-status-val {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-main, #f1f5f9);
+  margin-top: 4px;
+}
+
+/* BUTTONS */
+.rs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 22px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+.rs-btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+}
+.rs-btn-primary:hover {
+  background: #1d4ed8;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+  transform: translateY(-1px);
+}
+
+/* STEP-BY-STEP ORDERED LIST */
+.rs-install-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.rs-step-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rs-step-title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: var(--text-main, #f1f5f9);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rs-step-desc {
+  font-size: 0.84rem;
+  color: var(--text-muted, #8493ad);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* CODE SNIPPET BOX WITH COPY BUTTON */
+.rs-code-box {
+  background: #050811;
+  border: 1px solid var(--border-color, #1a2744);
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px 14px 12px 18px;
+  gap: 16px;
+}
+.rs-code-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: #38bdf8;
+  white-space: pre;
+  word-break: normal;
+  flex: 1;
+  margin: 0;
+}
+.rs-copy-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.rs-copy-btn:hover {
+  background: #1d4ed8;
+}
+.rs-copy-btn.copied {
+  background: #10b981;
+}
+
+/* CONNECTION WIDGET */
+.rs-conn-widget {
+  background: var(--card-inner, #090e1c);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 10px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* TIPS & TROUBLESHOOTING BOX */
+.rs-tips-box {
+  background: #090e1c;
+  border: 1px solid #1a2744;
+  border-radius: 10px;
+  padding: 18px 24px;
+}
+.rs-tips-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #38bdf8;
+  margin-bottom: 8px;
+}
+.rs-tips-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.8rem;
+  color: #8493ad;
+  line-height: 1.8;
+}
+.rs-tips-list li {
+  color: #8493ad;
+}
+
+/* ==========================================================================
+   LIGHT THEME SUPPORT FOR SETUP PAGE
+   Ensures 100% clean light appearance when body.theme-light is active
+   ========================================================================== */
+body.theme-light #page-setup .rs-setup-card {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+body.theme-light #page-setup .rs-setup-header {
+  background: #f8fafc !important;
+  border-bottom-color: #e2e8f0 !important;
+}
+body.theme-light #page-setup .rs-setup-title {
+  color: #0f172a !important;
+}
+body.theme-light #page-setup .rs-setup-lead {
+  color: #475569 !important;
+}
+body.theme-light #page-setup .rs-status-box {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+body.theme-light #page-setup .rs-status-box .rs-status-lbl {
+  color: #64748b !important;
+}
+body.theme-light #page-setup .rs-status-box .rs-status-val {
+  color: #0f172a !important;
+}
+body.theme-light #page-setup .rs-step-title {
+  color: #0f172a !important;
+}
+body.theme-light #page-setup .rs-step-desc {
+  color: #475569 !important;
+}
+body.theme-light #page-setup .rs-code-box {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+}
+body.theme-light #page-setup .rs-code-text {
+  color: #0f172a !important;
+  font-weight: 600 !important;
+}
+body.theme-light #page-setup .rs-copy-btn {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+body.theme-light #page-setup .rs-copy-btn:hover {
+  background: #1d4ed8 !important;
+}
+body.theme-light #page-setup .rs-copy-btn.copied {
+  background: #10b981 !important;
+}
+body.theme-light #page-setup .rs-conn-widget {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+body.theme-light #page-setup .rs-tips-box {
+  background: #f0fdf4 !important;
+  border-color: #bbf7d0 !important;
+}
+body.theme-light #page-setup .rs-tips-title {
+  color: #16a34a !important;
+}
+body.theme-light #page-setup .rs-tips-list {
+  color: #334155 !important;
+}
+body.theme-light #page-setup .rs-tips-list li {
+  color: #334155 !important;
+}
+
+/* CLEANUP / UNINSTALL BOX */
+.rs-cleanup-box {
+  background: rgba(220, 38, 38, 0.06);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 10px;
+  padding: 18px 24px;
+}
+body.theme-light #page-setup .rs-cleanup-box {
+  background: #fef2f2 !important;
+  border-color: #fecaca !important;
+}
+body.theme-light #page-setup .rs-cleanup-box .rs-code-box {
+  background: #fff5f5 !important;
+  border-color: #fecaca !important;
+}
+body.theme-light #page-setup .rs-cleanup-box .rs-code-text {
+  color: #b91c1c !important;
+}
+
+</style>
 </head>
 <body>
 
@@ -67,6 +876,10 @@
     </div>
 
     <nav class="nav-items">
+      <button class="nav-btn" data-page="setup">
+        <span class="icon">⚡</span>
+        <span>Setup</span>
+      </button>
       <button class="nav-btn active" data-page="control">
         <span class="icon">🦾</span>
         <span>Control</span>
@@ -86,6 +899,10 @@
       <button class="nav-btn" data-page="camera">
         <span class="icon">📷</span>
         <span>Camera</span>
+      </button>
+      <button class="nav-btn" data-page="ai-deploy">
+        <span class="icon">🧠</span>
+        <span>AI Deploy</span>
       </button>
       <button class="nav-btn" data-page="settings">
         <span class="icon">⚙️</span>
@@ -124,6 +941,168 @@
       <!-- ========================================================
            PAGE 1: CONTROL DASHBOARD
            ======================================================== -->
+            <!-- ========================================================
+           PAGE 0: SETUP (ROBOT STUDIO STEP-BY-STEP HELPER GUIDE)
+           ======================================================== -->
+            <!-- ========================================================
+           PAGE 0: SETUP (SO-101 HARDWARE SETUP & LAUNCH GUIDE)
+           ======================================================== -->
+      <section class="page-view" id="page-setup">
+
+        <!-- HERO SETUP CARD -->
+        <div class="rs-setup-card">
+          <div class="rs-setup-header">
+            <div class="rs-setup-title">
+              <span class="icon">⚡</span> SO-101 Hardware Setup &amp; Launch Guide
+            </div>
+            <span class="rs-tag live" id="setup-header-badge">SO-101 Studio</span>
+          </div>
+
+          <div class="rs-setup-body">
+            <p class="rs-setup-lead">
+              Follow these 5 simple steps to set up and launch your local SO-101 robotic arm, Feetech STS3215 serial bus, and cameras. Once the launch script runs, this web studio will automatically connect to your local hardware bridge!
+            </p>
+
+            <!-- LIVE STATUS SUMMARY BAR -->
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-top:6px;">
+              <div class="rs-status-box">
+                <div class="rs-status-lbl">HARDWARE BRIDGE</div>
+                <div id="setup-diag-bridge" class="rs-status-val" style="color:#10b981;">● ONLINE</div>
+              </div>
+              <div class="rs-status-box">
+                <div class="rs-status-lbl">ROBOT SERIAL PORT</div>
+                <div id="setup-diag-port" class="rs-status-val" style="color:#0284c7;">/dev/ttyACM0 (1 Mbps)</div>
+              </div>
+              <div class="rs-status-box">
+                <div class="rs-status-lbl">AI &amp; GPU ENGINE</div>
+                <div class="rs-status-val">PyTorch CUDA (GTX 1650)</div>
+              </div>
+              <div class="rs-status-box">
+                <div class="rs-status-lbl">DATA PRIVACY</div>
+                <div class="rs-status-val" style="color:#10b981;">🛡️ 100% Local Disk</div>
+              </div>
+            </div>
+
+            <!-- 5 STEP-BY-STEP ORDERED LIST -->
+            <ol class="rs-install-steps" style="margin-top:16px;">
+
+              <!-- STEP 1: DOWNLOAD DIRECT -->
+              <li class="rs-step-item">
+                <div class="rs-step-title">1. Download SO-101 Desktop Package (ZIP)</div>
+                <p class="rs-step-desc">
+                  Click the button below to download the complete <code>so101_studio_desktop.zip</code> package directly into your <code>~/Downloads</code> folder:
+                </p>
+                <div style="margin-top:8px;">
+                  <a href="so101_studio_desktop.zip" download class="rs-btn rs-btn-primary">
+                    ⬇️ Download SO-101 Studio Desktop (ZIP)
+                  </a>
+                </div>
+              </li>
+
+              <!-- STEP 2: UNZIP IN DOWNLOADS -->
+              <li class="rs-step-item">
+                <div class="rs-step-title">2. Unzip Downloaded Archive in Downloads</div>
+                <p class="rs-step-desc">
+                  Open your terminal and extract the downloaded <code>so101_studio_desktop.zip</code> package in your Downloads directory:
+                </p>
+                <div class="rs-code-box">
+                  <pre class="rs-code-text">cd ~/Downloads
+unzip -q so101_studio_desktop.zip</pre>
+                  <button type="button" class="rs-copy-btn">Copy</button>
+                </div>
+              </li>
+
+              <!-- STEP 3: CREATE so101_studio DIRECTORY AND MOVE EXTRACTED FILES -->
+              <li class="rs-step-item">
+                <div class="rs-step-title">3. Create <code>so101_studio</code> Directory &amp; Move Extracted Files</div>
+                <p class="rs-step-desc">
+                  Create the dedicated <code>~/so101_studio</code> project folder, move the extracted files into it, and switch to that directory:
+                </p>
+                <div class="rs-code-box">
+                  <pre class="rs-code-text">mkdir -p ~/so101_studio
+mv ~/Downloads/so101_studio_desktop/* ~/so101_studio/
+cd ~/so101_studio</pre>
+                  <button type="button" class="rs-copy-btn">Copy</button>
+                </div>
+              </li>
+
+              <!-- STEP 4: CREATE CONDA ENVIRONMENT -->
+              <li class="rs-step-item">
+                <div class="rs-step-title">4. Create &amp; Activate Conda Environment</div>
+                <p class="rs-step-desc">
+                  Create and activate the Python 3.10 Conda environment pre-configured with LeRobot, PyTorch, OpenCV, and Feetech serial drivers:
+                </p>
+                <div class="rs-code-box">
+                  <pre class="rs-code-text">conda env create -f environment.yml
+conda activate so101_studio</pre>
+                  <button type="button" class="rs-copy-btn">Copy</button>
+                </div>
+              </li>
+
+              <!-- STEP 5: LAUNCH SHELL SCRIPT -->
+              <li class="rs-step-item">
+                <div class="rs-step-title">5. Launch Ubuntu Script (Auto Permissions &amp; Hardware Bridge)</div>
+                <p class="rs-step-desc">
+                  Run the dedicated Ubuntu launcher. It automatically configures USB permissions (<code>dialout, video</code>), starts camera and motor drivers, and links to this web studio:
+                </p>
+                <div class="rs-code-box">
+                  <pre class="rs-code-text">chmod +x run_ubuntu.sh
+./run_ubuntu.sh</pre>
+                  <button type="button" class="rs-copy-btn">Copy</button>
+                </div>
+              </li>
+
+            </ol>
+
+            <!-- LIVE WEB-TO-LOCAL CONNECTION CARD -->
+            <div class="rs-conn-widget" id="setup-conn-status-card" style="margin-top:14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span id="setup-bridge-live-dot" style="font-size:1.2rem; color:#10b981;">●</span>
+                  <span id="setup-bridge-live-text" style="font-size:0.92rem; font-weight:700;">Local Hardware Bridge: Connected (http://localhost:8080)</span>
+                </div>
+                <button type="button" class="rs-btn rs-btn-primary" id="btn-goto-control" style="font-size:0.84rem; padding:8px 18px;">🚀 Open Robot Control Page</button>
+              </div>
+            </div>
+
+            <!-- EXTRA HELP TIPS -->
+            <div class="rs-tips-box" style="margin-top:12px;">
+              <div class="rs-tips-title">💡 Hardware Troubleshooting &amp; Tips:</div>
+              <ul class="rs-tips-list">
+                <li><strong>No Serial Port Detected:</strong> Ensure the USB-C serial cable is securely plugged in, then click the Refresh icon on the Control page.</li>
+                <li><strong>Torque Lock:</strong> If motors are unpowered or limp, click "Motors: OFF" on the Control page to engage active torque holding.</li>
+                <li><strong>Emergency Stop:</strong> If any unexpected movement occurs, click the red <strong>E-STOP</strong> button in the top navigation bar immediately.</li>
+              </ul>
+            </div>
+
+            <!-- REMOVE EVERYTHING & UNINSTALLATION CARD -->
+            <div class="rs-cleanup-box" style="margin-top:14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+                <div style="font-size:0.92rem; font-weight:800; color:#ef4444; display:flex; align-items:center; gap:8px;">
+                  <span>🗑️</span> Remove Everything (Complete Cleanup &amp; Uninstall)
+                </div>
+                <span class="rs-tag" style="background:rgba(220,38,38,0.15); color:#ef4444; border:1px solid rgba(220,38,38,0.3); font-size:0.7rem;">Clean Reset</span>
+              </div>
+              <p style="font-size:0.82rem; color:var(--text-muted); line-height:1.5; margin:0 0 10px 0;">
+                If you ever want to completely wipe the installation, delete the Conda environment, remove project directories, and reclaim disk space, run these commands in your terminal:
+              </p>
+              <div class="rs-code-box" style="border-color:rgba(220,38,38,0.35);">
+                <pre class="rs-code-text" style="color:#f87171;">conda deactivate
+conda env remove -n so101_studio -y
+rm -rf ~/so101_studio
+rm -rf ~/Downloads/so101_studio_desktop*</pre>
+                <button type="button" class="rs-copy-btn" style="background:#dc2626;">Copy</button>
+              </div>
+              <div style="font-size:0.75rem; color:#94a3b8; margin-top:8px;">
+                ⚠️ <strong>Note:</strong> This permanently deletes the <code>so101_studio</code> Conda environment and removes all downloaded and extracted files.
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </section>
+
       <section class="page-view active" id="page-control">
 
         <!-- ROW 1: CONNECTION | QUICK ACTIONS | ROBOT PREVIEW | STATUS -->
@@ -1210,6 +2189,238 @@ Awaiting calibration generation...
       </section>
 
       <!-- ========================================================
+           PAGE: AI DEPLOYMENT (AI Model Deployment & Real Robot Evaluation)
+           ======================================================== -->
+            <!-- ========================================================
+           PAGE: AI POLICY INFERENCE (ROBOT STUDIO CLEAN DESIGN)
+           ======================================================== -->
+      <section class="page-view" id="page-ai-deploy">
+
+        <!-- 1. HERO HEADER BANNER -->
+        <div class="rs-inf-hero">
+          <div class="rs-inf-hero-header">
+            <div class="rs-inf-badge">AI POLICY INFERENCE</div>
+            <div class="rs-inf-title">Run Trained AI Policy on Real SO-101</div>
+            <p class="rs-inf-desc">
+              Execute vision-based autonomous policies safely. Nothing moves until an operator approves, every action is clamped to physical joint limits, and the arm stops instantly if the heartbeat drops or Emergency Stop is pressed.
+            </p>
+          </div>
+          <div class="rs-inf-hero-stats">
+            <div class="rs-stat-box">
+              <span class="rs-stat-label">POLICY STATUS</span>
+              <span class="rs-stat-val standby" id="ai-status-pill">STANDBY</span>
+            </div>
+            <div class="rs-stat-box">
+              <span class="rs-stat-label">CONTROL RATE</span>
+              <span class="rs-stat-val" id="ai-rate-val">20.0 Hz</span>
+            </div>
+            <div class="rs-stat-box">
+              <span class="rs-stat-label">INFERENCE TIME</span>
+              <span class="rs-stat-val" id="ai-latency-val">18.4 ms</span>
+            </div>
+            <div class="rs-stat-box">
+              <span class="rs-stat-label">HEARTBEAT</span>
+              <span class="rs-stat-val ok" id="ai-heartbeat-val">ACTIVE</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. MAIN 2-COLUMN GRID -->
+        <div class="rs-inf-grid">
+
+          <!-- LEFT COLUMN: MODEL & ROBOT CONFIGURATION -->
+          <div class="rs-card">
+            <div class="rs-card-header">
+              <div class="rs-card-title">
+                <span class="icon">📦</span> 1. Policy Model &amp; Hardware
+              </div>
+              <span class="rs-tag" id="ai-model-tag">LeRobot / ACT / RL</span>
+            </div>
+            <div class="rs-card-body">
+
+              <!-- Model Checkpoint Import -->
+              <div class="form-group">
+                <label class="form-label">Trained Model Checkpoint</label>
+                <div class="rs-input-group">
+                  <input type="text" class="form-input" id="ai-model-display" placeholder="No checkpoint loaded. Click '📂 Import Checkpoint' to select file..." readonly style="font-weight:600; cursor:pointer;">
+                  <label class="btn btn-primary" for="ai-model-file-input" style="cursor:pointer; margin:0; white-space:nowrap; font-weight:700;">
+                    📂 Import Checkpoint
+                  </label>
+                  <input type="file" id="ai-model-file-input" style="display:none;" accept=".pt,.pth,.msgpack,.onnx,.bin,.safetensors,.zip">
+                </div>
+                <div class="form-hint" id="ai-model-hint">Supports trained PyTorch (.pt, .pth), LeRobot ACT, Diffusion Policy, and JAX weights.</div>
+              </div>
+
+              <!-- Robot & Serial Port -->
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label class="form-label">Robot Arm</label>
+                  <input type="text" class="form-input" value="SO-101 (6-DOF STS3215)" readonly>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Hardware Port</label>
+                  <select class="form-select" id="ai-port-select">
+                    <option value="/dev/ttyACM0">/dev/ttyACM0 (1 Mbps)</option>
+                    <option value="/dev/ttyUSB0">/dev/ttyUSB0</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Vision Inputs (Dual-Camera & Device Detection) -->
+              <div class="form-group">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <label class="form-label" style="margin:0;">Active Camera Observation</label>
+                  <span class="rs-tag" id="ai-cam-status-tag" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3);">○ Disconnected</span>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <select class="form-select" id="ai-cam-device-select" style="flex:1;">
+                    <option value="">-- Scanning for plugged-in cameras... --</option>
+                  </select>
+                  <button type="button" class="btn btn-secondary" id="btn-ai-cam-refresh" title="Scan for plugged-in cameras" style="padding:8px 12px; cursor:pointer;">🔄</button>
+                  <button type="button" class="btn btn-primary" id="btn-ai-cam-connect" style="white-space:nowrap; font-weight:700;">▶ Connect Camera</button>
+                  <button type="button" class="btn btn-secondary" id="btn-ai-cam-disconnect" style="display:none; white-space:nowrap;">⏹ Disconnect</button>
+                </div>
+                <div class="rs-cam-chips" style="margin-top:6px;">
+                  <label class="rs-chip active" id="chip-cam-env">
+                    <input type="checkbox" id="ai-cam-top-chk" checked> 📷 Workspace Camera (Top/Scene)
+                  </label>
+                  <label class="rs-chip" id="chip-cam-wrist">
+                    <input type="checkbox" id="ai-cam-wrist-chk"> 🦾 Gripper Camera (Wrist/Hand)
+                  </label>
+                </div>
+                <div class="form-hint" id="ai-cam-hint">Plug in your USB / Intel RealSense camera and click '▶ Connect Camera'.</div>
+              </div>
+
+              <!-- Joint Limits & Safety Clamping -->
+              <div class="form-group">
+                <label class="form-label">Safety &amp; Speed Limit</label>
+                <div class="rs-speed-slider-wrap">
+                  <span class="rs-speed-text">Max Joint Velocity: <b id="ai-speed-val">1.0 rad/s</b></span>
+                  <input type="range" class="form-range" id="ai-speed-range" min="0.2" max="2.5" step="0.1" value="1.0">
+                </div>
+                <div class="form-hint">Actions exceeding physical STS3215 calibrated limits are automatically clamped.</div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: OPERATOR APPROVAL & CONTROL -->
+          <div class="rs-card">
+            <div class="rs-card-header">
+              <div class="rs-card-title">
+                <span class="icon">🛡️</span> 2. Operator Safety &amp; Execution
+              </div>
+              <span class="rs-tag" id="ai-arm-tag">Safety Interlocked</span>
+            </div>
+            <div class="rs-card-body">
+
+              <!-- Operator Approval Box -->
+              <div class="rs-approval-box" id="rs-approval-box">
+                <div class="form-group">
+                  <label class="form-label">Operator Name</label>
+                  <input type="text" class="form-input" id="ai-operator-name" placeholder="Type your name or operator ID" value="Operator">
+                </div>
+
+                <label class="rs-checkbox-label">
+                  <input type="checkbox" id="ai-area-clear-chk" checked>
+                  <span>I confirm the robot workspace is clear of obstacles and humans.</span>
+                </label>
+
+                <div class="rs-approval-btn-wrap">
+                  <button class="btn btn-warning" id="btn-ai-approve">
+                    🔐 Approve (60 s)
+                  </button>
+                  <div class="rs-approval-timer" id="ai-approval-timer" style="display:none;">
+                    ⏱️ Approved: <b id="ai-timer-sec">60</b>s remaining
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Control Buttons -->
+              <div class="rs-action-buttons">
+                <button class="btn btn-success btn-lg" id="btn-ai-start-policy" disabled>
+                  ▶ Start Policy
+                </button>
+                <button class="btn btn-secondary btn-lg" id="btn-ai-stop-policy" disabled>
+                  ⏹ Stop Motion
+                </button>
+                <button class="btn btn-danger btn-lg" id="btn-ai-emergency-stop">
+                  🚨 EMERGENCY STOP
+                </button>
+              </div>
+
+              <!-- Live Execution Logs with Clear Button -->
+              <div class="form-group" style="margin-top:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                  <label class="form-label" style="margin:0;">Execution Telemetry Log</label>
+                  <button type="button" class="btn btn-secondary" id="btn-ai-clear-log" style="font-size:0.7rem; padding:3px 8px; cursor:pointer;">🗑️ Clear Log</button>
+                </div>
+                <div class="rs-telemetry-console" id="ai-console-log">
+                  <div class="log-entry info">[System] Inference engine initialized in standby mode.</div>
+                  <div class="log-entry info">[Safety] Physical interlocks engaged. Operator approval required.</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 3. CAMERA & JOINT DYNAMICS LIVE PANEL -->
+        <div class="rs-card" style="margin-top:16px;">
+          <div class="rs-card-header">
+            <div class="rs-card-title">
+              <span class="icon">👁️</span> Live Visual &amp; Joint Tracking Dynamics
+            </div>
+            <span class="rs-tag" id="ai-vis-live-badge">STANDBY</span>
+          </div>
+          <div class="rs-card-body">
+            <div class="rs-vis-grid">
+              <!-- Live Video Stream -->
+              <div class="rs-cam-feed-wrap" style="position:relative; min-height:260px; background:var(--card-inner, #090e1c); border:1px solid var(--border-color, #1a2744); border-radius:8px; overflow:hidden; display:flex; flex-direction:column;">
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--border-color, #1a2744); background:rgba(0,0,0,0.15);">
+                  <span class="rs-cam-label" style="margin:0;">Camera Observation Feed</span>
+                  <span class="rs-tag" id="ai-cam-feed-badge" style="font-size:0.68rem;">Camera Offline</span>
+                </div>
+                <!-- Offline Click-to-Connect Overlay -->
+                <div id="ai-cam-offline-overlay" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; height:220px; padding:20px; text-align:center;">
+                  <div style="font-size:2rem;">📷</div>
+                  <div style="font-size:0.86rem; font-weight:700; color:var(--text-main);">Camera Stream Offline</div>
+                  <div style="font-size:0.75rem; color:var(--text-muted); max-width:320px;">
+                    Select your plugged-in camera above and click below to start live vision:
+                  </div>
+                  <button type="button" class="btn btn-primary" id="btn-ai-overlay-connect" style="font-size:0.8rem; padding:8px 16px; cursor:pointer;">
+                    ▶ Connect Camera
+                  </button>
+                </div>
+                <!-- Live Image / Video Streams -->
+                <img id="ai-cam-live-img" src="" alt="Live Video Feed" style="display:none; width:100%; height:220px; object-fit:contain; background:#000;">
+                <video id="ai-cam-live-video" autoplay playsinline muted style="display:none; width:100%; height:220px; object-fit:contain; background:#000;"></video>
+              </div>
+
+              <!-- Joint Error & Angle Bars -->
+              <div class="rs-joints-telemetry-wrap">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                  <span class="rs-cam-label" style="margin:0;">Real-Time Joint Response (° vs Target)</span>
+                  <span class="rs-tag live" id="ai-joint-robot-status" style="font-size:0.68rem;">ROBOT SYNCED</span>
+                </div>
+                <div class="rs-joint-bars" id="ai-joint-bars">
+                  <div class="rs-joint-row"><span>Joint 1 (Base):</span> <b id="ai-j1-val">0.0°</b> <span class="err-val" id="ai-j1-err">Δ 0.0°</span></div>
+                  <div class="rs-joint-row"><span>Joint 2 (Lift):</span> <b id="ai-j2-val">0.0°</b> <span class="err-val" id="ai-j2-err">Δ 0.0°</span></div>
+                  <div class="rs-joint-row"><span>Joint 3 (Elbow):</span> <b id="ai-j3-val">0.0°</b> <span class="err-val" id="ai-j3-err">Δ 0.0°</span></div>
+                  <div class="rs-joint-row"><span>Joint 4 (Wrist):</span> <b id="ai-j4-val">0.0°</b> <span class="err-val" id="ai-j4-err">Δ 0.0°</span></div>
+                  <div class="rs-joint-row"><span>Joint 5 (Roll):</span> <b id="ai-j5-val">0.0°</b> <span class="err-val" id="ai-j5-err">Δ 0.0°</span></div>
+                  <div class="rs-joint-row"><span>Joint 6 (Gripper):</span> <b id="ai-j6-val">0.0%</b> <span class="err-val" id="ai-j6-err">Δ 0.0%</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+
+      <!-- ========================================================
            PAGE 4: SETTINGS
            ======================================================== -->
       <section class="page-view" id="page-settings">
@@ -1345,63 +2556,52 @@ Loading calibration...
           </pre>
         </div>
 
-        <!-- CARD: DOWNLOAD DESKTOP TOOLS & OFFLINE BRIDGES (WINDOWS & LINUX) -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">
-              <span class="icon">💾</span> Downloads &amp; Offline Desktop Tools (Windows &amp; Linux)
-            </div>
-          </div>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
-            <div style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px;">
-              <h4 style="font-size:0.9rem; color:#fff; display:flex; align-items:center; gap:8px;">
-                <span>📦</span> Complete Standalone Desktop Studio (.zip)
-              </h4>
-              <p style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
-                Contains everything needed to run the full hardware bridge with 3D Depth cameras, local CSV trajectory recording, and random dynamics testing offline on <strong>both Windows and Linux</strong> (zero ROS 2 required).
-              </p>
-              <div style="margin-top:auto; padding-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
-                <a href="so101_studio_desktop.zip" download="so101_studio_desktop.zip" class="btn btn-success" style="text-decoration:none; display:inline-flex; align-items:center; gap:8px; font-size:0.8rem; font-weight:700;">
-                  ⬇ Download Desktop Package (.zip)
-                </a>
-              </div>
-            </div>
-
-            <div style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:8px;">
-              <h4 style="font-size:0.9rem; color:#fff; display:flex; align-items:center; gap:8px;">
-                <span>🚀</span> 1-Click Launchers (Windows &amp; Linux)
-              </h4>
-              <p style="font-size:0.75rem; color:var(--text-muted); line-height:1.4;">
-                Download individual platform launchers directly:
-              </p>
-              <div style="margin-top:auto; display:flex; gap:8px; flex-wrap:wrap; padding-top:6px;">
-                <a href="run_windows.bat" download="run_windows.bat" class="btn btn-primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.76rem;">
-                  🪟 run_windows.bat
-                </a>
-                <a href="run_linux.sh" download="run_linux.sh" class="btn btn-primary" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.76rem; background:#0284c7;">
-                  🐧 run_linux.sh
-                </a>
-                <a href="bridge_standalone.py" download="bridge_standalone.py" class="btn btn-outline" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-size:0.76rem;">
-                  🐍 bridge_standalone.py
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <div style="margin-top:14px; background:rgba(0,0,0,0.25); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-size:0.75rem; color:#94a3b8; line-height:1.5;">
-            <strong style="color:#fff; font-size:0.8rem; display:block; margin-bottom:4px;">📖 How to Launch on any PC (Windows &amp; Linux):</strong>
-            • <strong>Windows 10/11:</strong> Extract the downloaded ZIP -> Double-click <code>run_windows.bat</code>. It auto-installs python libraries and launches the studio in your browser.<br>
-            • <strong>Linux (Ubuntu / Mint / Debian):</strong> Extract the ZIP -> Open terminal and run: <code>chmod +x run_linux.sh && ./run_linux.sh</code>.<br>
-            • <strong>In the Webpage:</strong> Leave connection mode set to <strong>Local Bridge</strong> and click <strong>Connect</strong>. All 3D Depth, trajectory recording, and dynamics testing work with full local hardware speed!
-          </div>
-        </div>
-
       </section>
 
       <!-- ========================================================
            PAGE 5: ABOUT
            ======================================================== -->
       <section class="page-view" id="page-about">
+
+        <!-- CARD: LOCAL LINUX QUICKSTART & DATA PRIVACY (ROBOT STUDIO STYLE) -->
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">🚀</span> Linux Local Quickstart &amp; Hardware Launch Guide
+            </div>
+            <span class="rs-tag live" style="font-size:0.72rem; padding:3px 8px; border-radius:4px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);">🛡️ 100% OFFLINE &amp; LOCAL PRIVACY</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:14px; padding:16px 18px; font-size:0.82rem; color:#cbd5e1; line-height:1.5;">
+            <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:8px; padding:10px 14px; color:#93c5fd; font-size:0.8rem;">
+              <strong>🔒 Total Local Privacy Guarantee:</strong> All camera video streams, recorded demonstration episodes, joint angles, and AI model checkpoints are processed and stored <strong>100% on your local PC</strong>. Zero data ever leaves your computer.
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+              <!-- Step 1: Conda Environment -->
+              <div style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:12px;">
+                <div style="font-weight:700; color:#38bdf8; margin-bottom:6px;">1. Activate Conda Environment</div>
+                <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">Runs with NVIDIA CUDA GPU acceleration and all hardware drivers pre-installed:</p>
+                <div style="background:#050811; border:1px solid #1a2744; border-radius:6px; padding:8px 10px; font-family:monospace; font-size:0.78rem; color:#10b981;">
+                  conda activate lerobot
+                </div>
+              </div>
+
+              <!-- Step 2: Launch Bridge -->
+              <div style="background:var(--card-inner); border:1px solid var(--border-color); border-radius:8px; padding:12px;">
+                <div style="font-weight:700; color:#38bdf8; margin-bottom:6px;">2. Launch Hardware &amp; Camera Bridge</div>
+                <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">Starts the high-speed async bridge for robot motors &amp; dual-camera streaming:</p>
+                <div style="background:#050811; border:1px solid #1a2744; border-radius:6px; padding:8px 10px; font-family:monospace; font-size:0.78rem; color:#10b981;">
+                  python camera_bridge.py
+                </div>
+              </div>
+            </div>
+
+            <!-- Permissions Note -->
+            <div style="font-size:0.75rem; color:var(--text-muted); background:#090e1c; border:1px solid var(--border-color); border-radius:6px; padding:8px 12px;">
+              💡 <strong>Linux USB Permission Fix:</strong> If <code>/dev/ttyACM0</code> or <code>/dev/video*</code> gives permission denied, run once: <code>sudo usermod -aG dialout,video $USER</code>, then log out and in.
+            </div>
+          </div>
+        </div>
 
         <div class="card">
           <div class="card-header">
@@ -2126,7 +3326,9 @@ Loading calibration...
       });
 
       try {
-        if (pageKey === 'control') {
+        if (pageKey === 'setup') {
+          if (headerTitle) headerTitle.innerText = "SO-101 Hardware Setup & Launch Guide";
+        } else if (pageKey === 'control') {
           if (headerTitle) headerTitle.innerText = "SO-100 / SO-101 Robotic Arm Control";
         } else if (pageKey === 'teleop') {
           if (headerTitle) headerTitle.innerText = "SO-101 Interactive Teleoperation Suite";
@@ -2139,6 +3341,9 @@ Loading calibration...
         } else if (pageKey === 'camera') {
           if (headerTitle) headerTitle.innerText = "SO-101 Multi-Camera Vision & Streaming Studio";
           loadCameraDevices();
+        } else if (pageKey === 'ai-deploy') {
+          if (headerTitle) headerTitle.innerText = "SO-101 Autonomous AI Model Deployment & Evaluation";
+          if (typeof initAiDeployDashboard === 'function') initAiDeployDashboard();
         } else if (pageKey === 'settings') {
           if (headerTitle) headerTitle.innerText = "SO-101 Robot & ROS 2 Bridge Settings";
         } else if (pageKey === 'about') {
@@ -2951,6 +4156,12 @@ Loading calibration...
       const now = Date.now();
       const dt = Math.max(0.01, (now - prevJointTime) / 1000.0);
       prevJointTime = now;
+
+      // Pass real-time joints to AI Deployment Dashboard
+      window.lastRobotJoints = data.joints;
+      if (typeof window.updateAiDeployTelemetry === 'function') {
+        window.updateAiDeployTelemetry(data.joints);
+      }
 
       // Capture live trajectory row if client-side recording is active (Web Serial mode)
       if (isClientRecording && data.joints) {
@@ -5687,5 +6898,7 @@ Loading calibration...
     // Start WebSocket
     initWebSocket();
   </script>
+  <script src="ai_deploy.js"></script>
+  <script src="setup_page.js"></script>
 </body>
 </html>
