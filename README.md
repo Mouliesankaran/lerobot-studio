@@ -1,265 +1,235 @@
 # SO-100 / SO-101 Robotics & Vision Control Suite
 
-An advanced, real-time robotics dashboard and characterization platform for the **SO-100** and **SO-101** 6-DOF robotic arms equipped with **Feetech STS3215 serial bus servos**, integrated with **ROS 2 Humble**, multi-camera vision, and cloud deployment via **GitHub + Render**.
+An advanced, real-time robotics dashboard, teleoperation platform, and characterization suite for the **SO-100** and **SO-101** 6-DOF robotic arms equipped with **Feetech STS3215 serial bus servos (1 Mbps)**, multi-camera computer vision, and autonomous AI model deployment.
 
 ---
 
-## Architecture Overview
+## 🏛️ System Architecture
 
-```
+```text
                       ┌──────────────────────────────────────────────┐
-                      │            Render Cloud Hosting              │
-                      │    (Global CDN, Auto-SSL HTTPS Frontend)     │
-                      │      https://<your-app>.onrender.com         │
+                      │        Modern Web Browser (Chrome / Edge)    │
+                      │           http://localhost:8080              │
+                      │  - Light Mode & Dark Mode Responsive Design  │
+                      │  - High-Speed WebSockets & REST Dashboard    │
                       └──────────────────────┬───────────────────────┘
                                              │
-                       Static Web App (HTML5 / CSS3 / Vanilla JS)
-                       Local User Data: window.localStorage (Isolated)
+                        HTTP REST / WebSocket Telemetry (30 - 50 Hz)
                                              │
                                              ▼
                       ┌──────────────────────────────────────────────┐
-                      │         User's Laptop / Local Host           │
-                      │       http://localhost:8080 (REST / WS)      │
+                      │       SO-101 Python Standalone Bridge        │
+                      │            (bridge_standalone.py)            │
                       │                                              │
-                      │   ┌──────────────────────────────────────┐   │
-                      │   │       Python Tornado HTTP & WS       │   │
-                      │   │   - Universal CORS & PNA Enabled     │   │
-                      │   │   - 30 Hz Telemetry Broadcast        │   │
-                      │   └──────────────────┬───────────────────┘   │
+                      │  ┌────────────────────────────────────────┐  │
+                      │  │  Tornado Web Server & WS Engine (8080) │  │
+                      │  │  - Universal CORS & Private Network    │  │
+                      │  │  - Real-time Multi-Client Broadcast    │  │
+                      │  └───────────────────┬────────────────────┘  │
                       │                      │                       │
-                      │   ┌──────────────────┴───────────────────┐   │
-                      │   │         ROS 2 Humble Node            │   │
-                      │   │  /so101/joint_commands [JointState]  │   │
-                      │   │  /so101/joint_states   [JointState]  │   │
-                      │   └──────────────────┬───────────────────┘   │
-                      │                      │                       │
-                      │   ┌──────────────────┴───────────────────┐   │
-                      │   │          Hardware Drivers            │   │
-                      │   │  - SO101Driver (1 Mbps Serial UART)  │   │
-                      │   │  - CameraManager (USB / RealSense)   │   │
-                      │   └──────────────────┬───────────────────┘   │
+                      │  ┌───────────────────┴────────────────────┐  │
+                      │  │       Hardware Drivers & Backends      │  │
+                      │  │  - StandaloneSTS3215Driver (UART 1M)   │  │
+                      │  │  - LeaderFollowerManager (50 Hz)       │  │
+                      │  │  - CameraManager (V4L2 / RealSense)    │  │
+                      │  │  - AIDeploymentEngine (ACT / Diffusion)│  │
+                      │  └───────────────────┬────────────────────┘  │
                       └──────────────────────┼───────────────────────┘
                                              │
-                        USB Bus (/dev/ttyACM0, /dev/video*)
+                        Dual USB Serial & Camera Video Buses
                                              │
-                                             ▼
-                      ┌──────────────────────────────────────────────┐
-                      │              Physical Hardware               │
-                      │   - 6x Feetech STS3215 Servos (12V / 7.4V)   │
-                      │   - USB Webcams / Intel RealSense / Orbbec   │
-                      └──────────────────────────────────────────────┘
+                  ┌───────────────────────────┴───────────────────────────┐
+                  ▼                                                       ▼
+   ┌──────────────────────────────┐                       ┌──────────────────────────────┐
+   │   Follower Arm (Active)      │                       │     Leader Arm (Compliant)   │
+   │   - Port: /dev/ttyACM0       │                       │   - Port: /dev/ttyACM1       │
+   │   - 6x Feetech STS3215       │                       │   - 6x Feetech STS3215       │
+   │   - Torque ON (Synchronous)  │                       │   - Torque OFF (Hand Guided) │
+   └──────────────────────────────┘                       └──────────────────────────────┘
+                  │                                                       │
+                  └───────────────────────────┬───────────────────────────┘
+                                              ▼
+                        ┌──────────────────────────────────────────┐
+                        │        Multi-Camera Vision Feeds         │
+                        │   - Top Workspace Cam (/dev/video0)      │
+                        │   - Wrist Gripper Cam (Eye-in-Hand)      │
+                        │   - RealSense / Orbbec RGB + Depth       │
+                        └──────────────────────────────────────────┘
 ```
 
 ---
 
-## Key Features
+## 🚀 Key Modules & Capabilities
 
-1. **Dual Control Modes**:
-   - **Live Dynamic Sliders**: Move the physical arm in real-time as you drag or scroll sliders.
-   - **Direct Numerical Input**: Exact manual degree targeting with customizable velocity (`rad/s`).
-2. **Official LeRobot SO-101 Calibration**:
-   - 4-step guided wizard (Torque disable → Middle pose recording → Dynamic range limits → Save to `so101_calibration.json`).
-3. **Multi-Camera Vision Studio**:
-   - Live streaming for standard USB / UVC webcams, Intel RealSense (RGB + Depth), Orbbec, and ESP32-CAM.
-   - Real-time brightness/contrast tuning, snapshot capture, and fullscreen inspection.
-4. **Autonomous Testing & Analytics**:
-   - 10-target step-response dynamics test with settle detection and voltage monitoring.
-   - Generates detailed, professional one-page characterization reports (`.txt`).
-5. **Movement Recording & Playback**:
-   - Manual lead-through recording (torque-off gravity guide) exported to clean CSV datasets.
-   - High-fidelity playback engine with real-time progress tracking.
-6. **Zero-Cloud Local Privacy**:
-   - Every user's settings (theme mode, typography, font size, bridge address) are stored strictly in their browser's `localStorage`. No user data is sent to external cloud databases.
+### 1. 🦾 Leader-Follower Teleoperation & LeRobot Episode Recorder
+- **Zero-Latency Bilateral Teleoperation**: Low-latency (50 Hz, `<15 ms` round-trip) leader-to-follower mirroring inspired by the Piper robot SDK.
+- **Compliant Hand Guiding (Torque OFF)**: Leader arm servos have torque disabled automatically and continuously so the human operator can guide the arm effortlessly with zero resistance.
+- **Integrated Camera Studio**: Live dual-camera streams (Workspace Top Cam + Wrist Eye-in-Hand Cam) situated directly above the recording controls with 1-click connect/disconnect.
+- **Hugging Face LeRobot Dataset Format**: Record multi-modal demonstration episodes with synchronized actions (leader joint angles), observation states (follower joint angles), and camera snapshots saved into `data/lerobot_dataset/{task}/episode_{XXXX}/` (`trajectory.csv` + `meta.json`).
+- **Instant Replay Verification**: Replay any recorded trajectory directly on the physical follower robot with configurable playback speeds (0.5x, 1.0x, 2.0x).
+- **Simulation / Virtual Arm Mode**: Test the full bilateral mirroring and demonstration recording pipeline even when only one physical arm is plugged in.
+
+### 2. 🧠 Autonomous AI Model Deployment & Evaluation (AI Deploy)
+- **Policy Checkpoint Loader**: Deploy trained imitation learning and reinforcement learning policies (ACT Transformer, Diffusion Policy, PyTorch `.pt`, and JAX `.msgpack`).
+- **Operator Safety Interlock**: 60-second timed hardware authorization interlock; automatically freezes motors if the operator does not explicitly approve workspace clearance.
+- **Active Camera Observations**: Live streaming of Workspace and Wrist camera feeds feeding policy inference.
+- **Live 6-DOF Joint Dynamics**: Real-time target vs actual joint tracking with sub-degree error calculations and real-time execution console.
+
+### 3. ⚡ Hardware Setup & Launch Guide (Setup)
+- **5-Step Local Onboarding**: Line-by-line guide for USB permissions, virtual environment activation, bridge launching, and direct package download (`so101_studio_desktop.zip`).
+- **Complete System Reset**: Safe clean uninstall scripts to wipe conda environments and temporary build artifacts when needed.
+
+### 4. 🎮 Comprehensive Arm Control & Single-Arm Teleoperation
+- **Direct Joint Control**: Live sliders and numerical targeting for all 6 Feetech STS3215 servos with individual torque toggles, zero pose, and home calibration poses.
+- **Teleoperation Modes**:
+  - ⌨️ **Keyboard Teleoperator**: Hotkey-driven joint jogging and step sizing (1.0°, 2.0°, 5.0°).
+  - 🎮 **HTML5 Gamepad API**: Dual-analog stick and D-pad teleoperation with deadband filtering.
+  - 🕹️ **On-Screen Virtual Jogger**: Responsive mobile and touch-friendly D-Pad controls.
+
+### 5. 📊 Real-Time Dynamics Monitoring & CSV Recording
+- High-frequency 30 Hz observer tracking position error ($\Delta$), bus voltage (V), temperature (°C), and raw encoder ticks.
+- Built-in trajectory recorder exporting time-indexed `.csv` datasets for kinematic modeling and playback.
+
+### 6. 📐 Official LeRobot Calibration Wizard
+- 4-step guided calibration (Torque disable → Middle pose recording → Dynamic limit detection → Direct export to `so101_calibration.json`).
+
+### 7. 📷 Multi-Camera Vision Studio
+- Thread-safe camera manager supporting Intel RealSense (RGB + Depth), UVC USB webcams, and synthetic test streams.
+- Live brightness, contrast, and exposure tuning with snapshot downloads.
 
 ---
 
-## Project Structure
+## 📁 Repository Structure
 
-```
+```text
 servo_test/
-├── render.yaml                          # Render Blueprint infrastructure specification
-├── .gitignore                           # Git ignore rules for build, caches & rosbags
-├── requirements.txt                     # Python backend & computer vision dependencies
-├── README.md                            # Complete setup & deployment guide
-├── PROJECT_STATUS.md                    # Project tracking and hardware specifications
-├── so101_calibration.json               # Active calibrated servo offsets and limits
-├── home_position.txt                    # Calibrated home pose coordinates
-├── zero_position.txt                    # Zero baseline coordinates
+├── bridge_standalone.py                 # Primary Tornado HTTP & WebSocket Hardware Bridge
+├── camera_bridge.py                     # Standalone Bridge Mirror (Launch Script Compatible)
+├── camera_backend.py                    # Multi-camera V4L2 & RealSense capture manager
+├── leader_follower_manager.py           # 50 Hz Leader-Follower mirroring & LeRobot dataset engine
+├── ai_deployment_backend.py             # Autonomous AI policy inference and safety engine
+├── environment.yml                      # Conda environment definition (so101_studio)
+├── requirements.txt                     # Python package dependencies
+├── run_ubuntu.sh                        # 1-Click automated Linux launcher
+├── run_windows.bat                      # Windows launcher batch script
+├── so101_calibration.json               # Calibrated STS3215 servo offsets and limits
+├── home_position.txt                    # Calibrated reference home pose
+├── zero_position.txt                    # Baseline zero coordinates
+├── README.md                            # Comprehensive system documentation
 │
-├── web/                                 # Frontend (Render Static Publish Directory)
-│   ├── index.html                       # Responsive Single-Page Application (SPA)
-│   ├── styles.css                       # Themes (Dark/Light), layouts & CSS variables
-│   ├── logo.png                         # Application branding
-│   └── robot_preview.png                # Hardware visualization preview
+├── web/                                 # Frontend Web Studio (Static Single-Page Application)
+│   ├── index.html                       # Responsive HTML5 Interface with Light/Dark Theme
+│   ├── styles.css                       # Core dashboard stylesheets
+│   ├── setup_page.css / .js             # Hardware launch guide & setup components
+│   ├── ai_deploy.css / .js              # Autonomous AI deployment layout & telemetry
+│   ├── teleop_leader.css / .js          # Leader-Follower teleoperation, dual cameras & dataset recorder
+│   ├── so101_studio_desktop.zip         # Standalone offline desktop distribution archive
+│   ├── logo.png                         # iHub Robotics branding logo
+│   └── robot_preview.png                # Hardware preview rendering
 │
-├── src/                                 # ROS 2 Humble Packages
-│   └── so101_servo_dynamics/
-│       ├── package.xml
-│       ├── setup.py
-│       └── so101_servo_dynamics/
-│           ├── web_control_bridge.py    # Tornado Web + WS + ROS 2 Node (Port 8080)
-│           ├── so101_driver.py          # Feetech STS3215 low-level serial bus driver
-│           ├── hardware_connection_node.py
-│           └── servo_characterization_node.py
+├── data/
+│   └── lerobot_dataset/                 # Recorded Hugging Face LeRobot demonstration episodes
+│       └── {task_name}/
+│           └── episode_{XXXX}/
+│               ├── trajectory.csv       # Action & observation state trajectories
+│               └── meta.json            # Episode metadata, FPS, frame count, duration
 │
-└── data/                                # Local Datasets (Ignored in Git, local only)
-    ├── raw/                             # Recorded lead-through CSVs and reports
-    ├── processed/                       # Filtered telemetry files
-    └── rosbag/                          # ROS 2 bag storage
+└── uploads/                             # Uploaded checkpoints and model weights
+    └── checkpoints/                     # AI policy checkpoints (.pt, .msgpack)
 ```
 
 ---
 
-## Deployment to Render (Static Site)
+## 🛠️ Quick Start & Installation
 
-The frontend is packaged as a pure static web application. It requires **no Node.js build step**, making deployments instantaneous and lightweight.
+### Step 1: Configure USB Permissions (Linux)
+```bash
+# Grant access to serial USB ports and camera devices (Run once)
+sudo usermod -aG dialout,video $USER
+```
+*(Log out and log back in, or restart your terminal session for permissions to take effect).*
 
-### Option A: Automatic Blueprint Deployment (Recommended)
+### Step 2: Set Up Python Environment
+Using Conda:
+```bash
+conda env create -f environment.yml
+conda activate so101_studio
+```
 
-1. Push your repository to GitHub (see [GitHub Setup](#github-setup) below).
-2. Log in to [Render](https://render.com) and click **New +** → **Blueprint**.
-3. Connect your GitHub repository.
-4. Render automatically reads `render.yaml` and sets up the Static Site with:
-   - **Name**: `so101-robotics-dashboard`
-   - **Publish Directory**: `./web`
-   - **Build Command**: *(None / Empty)*
-   - **SPA Routing**: Automatic rewrite from `/*` to `/index.html`
-5. Click **Apply**. Your dashboard will be live at `https://so101-robotics-dashboard.onrender.com` in seconds!
+Or using standard `pip`:
+```bash
+pip install -r requirements.txt
+```
 
-### Option B: Manual Static Site Setup
+### Step 3: Launch Hardware Bridge & Studio
+Run the automated launcher:
+```bash
+chmod +x run_ubuntu.sh
+./run_ubuntu.sh
+```
 
-If configuring manually in the Render dashboard:
-1. Click **New +** → **Static Site**.
-2. Select your GitHub repository.
-3. Configure settings:
-   - **Name**: `so101-robotics-dashboard`
-   - **Branch**: `main`
-   - **Build Command**: *(Leave completely blank or enter `echo "No build required"`)*
-   - **Publish Directory**: `web`
-4. Under **Advanced** → **Redirects / Rewrites**:
-   - **Type**: `Rewrite`
-   - **Source**: `/*`
-   - **Destination**: `/index.html`
-5. Click **Create Static Site**.
+Or run the Python bridge directly:
+```bash
+python3 bridge_standalone.py --port /dev/ttyACM0 --web-port 8080
+```
+
+### Step 4: Open in Web Browser
+Open **`http://localhost:8080`** in Google Chrome or Microsoft Edge.
 
 ---
 
-## Local Robot Bridge Setup
+## 🦾 Leader-Follower Teleoperation & LeRobot Dataset Workflow
 
-To connect physical hardware to the dashboard (whether using the hosted Render site or local browser):
+Inspired by the Piper robot SDK and Hugging Face LeRobot, this workflow allows an operator to collect physical demonstrations by hand-guiding the Leader arm while the Follower arm executes identical movements:
 
-### 1. Prerequisites
-- **OS**: Ubuntu Linux 22.04 LTS (x86_64 or ARM64 / Raspberry Pi)
-- **Middleware**: ROS 2 Humble Desktop (`ros-humble-desktop`)
-- **Python**: 3.10+
-- **Serial Access**: Add your user to the `dialout` group:
-  ```bash
-  sudo usermod -aG dialout $USER
-  ```
-  *(Log out and log back in for permissions to take effect)*
+### 1. Hardware Connections
+- **Follower Arm USB**: Plug into `/dev/ttyACM0` (Torque ACTIVE).
+- **Leader Arm USB**: Plug into `/dev/ttyACM1` or `/dev/ttyUSB0` (Torque OFF for free hand guidance).
+- **Cameras**: Plug in Workspace Top Camera and Wrist Camera (e.g. `/dev/video0`).
 
-### 2. Install Python Dependencies
-```bash
-pip3 install -r requirements.txt
-```
+### 2. Open Leader Teleop Dashboard
+- Click **`🦾 Leader Teleop`** directly in the left sidebar menu.
 
-### 3. Build ROS 2 Workspace
-```bash
-source /opt/ros/humble/setup.bash
-colcon build --packages-select so101_servo_dynamics
-source install/setup.bash
-```
+### 3. Configure Ports & Start Mirroring
+- **Leader Arm Port**: Select `/dev/ttyACM1` (or select `simulation` to test with one arm).
+- **Follower Arm Port**: Select `/dev/ttyACM0`.
+- Click **`⚡ Leader Torque: OFF (Hand Guiding)`** to ensure the leader arm is compliant and freely movable by hand.
+- Click **`▶ Connect Camera`** on the top right to start the synchronized video feed.
+- Click **`▶ Start Mirroring`** to begin 50 Hz real-time bilateral tracking!
 
-### 4. Start the Local Hardware Bridge
-```bash
-# Sourcing ROS 2 environment
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+### 4. Record Demonstration Episodes
+1. Enter your task goal (e.g. `Pick cube and place in target bowl`).
+2. Click **`🔴 Start Episode`** to begin logging timestamps, actions, and observations.
+3. Guide the Leader arm by hand to pick the cube with the gripper, place it in the target location, and return to the ready pose.
+4. Click **`💾 Stop & Save`**: Episode is instantly saved to `data/lerobot_dataset/{task}/episode_{XXXX}/`.
+5. If an error occurred during the trial, click **`🗑 Discard`** to discard the attempt without polluting your training dataset.
 
-# Run the Tornado + ROS 2 Bridge Node
-python3 src/so101_servo_dynamics/so101_servo_dynamics/web_control_bridge.py
-```
-Output:
-```
-=================================================================
-   SO101 WEB CONTROLLER RUNNING AT: http://localhost:8080
-=================================================================
-  * Serial Hardware:   /dev/ttyACM0 @ 1000000 baud
-  * ROS 2 Publisher:   /so101/joint_commands [JointState]
-  * ROS 2 Publisher:   /so101/joint_states   [JointState]
-  * WebSocket:         ws://localhost:8080/ws
-  * Datasets Save:     data/raw/*.csv
-=================================================================
-```
+### 5. Verify Demonstrations (Replay)
+- In the **Recorded Dataset Episodes** table, click **`▶ Replay`** on any saved episode to watch the physical follower robot autonomously reproduce the recorded motion!
 
 ---
 
-## Connecting Hosted Render App to Local Robot
+## 🧠 Autonomous AI Policy Deployment Workflow
 
-When accessing your dashboard through the Render HTTPS URL:
-1. Open `https://<your-app>.onrender.com` in your browser.
-2. In the **Connection** card or **Settings** tab, verify the **Bridge URL**:
-   - Default: `http://localhost:8080`
-   - If running the robot on another laptop or Raspberry Pi on your local network: enter its LAN IP (e.g., `http://192.168.1.105:8080`).
-3. Click **Save Bridge URL**.
-
-### Browser Security Note (Mixed Content & Private Network Access)
-Modern browsers enforce strict security when a public HTTPS site connects to a local HTTP service (`localhost`):
-- **CORS & PNA**: The bridge automatically returns `Access-Control-Allow-Origin: *` and Chrome's `Access-Control-Allow-Private-Network: true`.
-- **Insecure Content Flag (If Prompted)**: If your browser blocks WebSocket (`ws://`) from an `https://` site:
-  - Click the **Site Settings / Lock / Shield icon** in your browser's address bar.
-  - Set **Insecure content** to **Allow**.
-  - Alternatively, you can always open `http://localhost:8080` directly in your browser when running the local bridge.
+1. Navigate to the **AI Deploy** tab in the sidebar.
+2. Select or import a trained model checkpoint (`.pt`, `.msgpack`).
+3. Verify that the workspace is clear of obstacles.
+4. Click **Approve (60 s)** to arm the safety interlock.
+5. Click **Start Policy** to execute vision-based autonomous trajectories on the physical robot.
+6. In case of unexpected behavior, hit **EMERGENCY STOP** (or press the global header E-STOP button) to immediately freeze all servos and disable torque.
 
 ---
 
-## GitHub Setup & Automatic Deployment Workflow
+## 🎨 Theme Customization
 
-Once connected, your deployment workflow is fully automated:
+SO-101 Studio includes dynamic high-contrast themes:
+- **Dark Mode**: High-contrast navy palette designed for laboratory environments (`#080d1a`, `#0d1527`, `#38bdf8`).
+- **Light Mode**: Clean daylight palette (`#ffffff`, `#f8fafc`, `#0f172a`, `#0284c7`) with zero dark artifacts or unreadable contrast.
 
-$$\text{Local Code Changes} \xrightarrow{\quad\text{git push}\quad} \text{GitHub Repository} \xrightarrow{\quad\text{Webhook}\quad} \text{Render Auto-Deploy} \xrightarrow{\quad\text{Instant}\quad} \text{Updated Live Site}$$
-
-### Initialize Git and Push to GitHub:
-```bash
-# 1. Initialize git repository
-git init
-
-# 2. Add all tracked project files (build, install, log, and rosbags are automatically excluded by .gitignore)
-git add .
-
-# 3. Check staged files to verify no unwanted files are included
-git status
-
-# 4. Create initial commit
-git commit -m "feat: initial commit of SO-101 robotics suite with Render deployment config"
-
-# 5. Link to your GitHub repository
-git remote add origin https://github.com/<your-username>/<your-repo-name>.git
-
-# 6. Push to main branch
-git branch -M main
-git push -u origin main
-```
+Toggle between themes anytime using the sun/moon button in the top navigation bar.
 
 ---
 
-## Verification & Testing
+## 📄 License
 
-### 1. Test Static Frontend Locally
-You can test the static build directory independently with Python's HTTP server:
-```bash
-python3 -m http.server 8000 --directory web
-```
-Open `http://localhost:8000` to verify offline static rendering.
-
-### 2. Test ROS 2 Package Build
-```bash
-source /opt/ros/humble/setup.bash
-colcon build --packages-select so101_servo_dynamics
-```
-
----
-
-## License
-
-MIT License. Designed and developed for open-source robotics research and automation.
+MIT License. Developed for open-source robotics research, autonomous manipulation, and compliant bilateral teleoperation.

@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="styles.css?v=20261119_1800">
   <link rel="stylesheet" href="ai_deploy.css?v=20261119_1800">
   <link rel="stylesheet" href="setup_page.css?v=20261119_1800">
+  <link rel="stylesheet" href="teleop_leader.css?v=20261120_1700">
   <style>
     .quick-tiles-grid {
       display: grid !important;
@@ -888,6 +889,10 @@ body.theme-light #page-setup .rs-cleanup-box .rs-code-text {
         <span class="icon">🎮</span>
         <span>Teleop</span>
       </button>
+      <button class="nav-btn" data-page="leader-teleop">
+        <span class="icon">🦾</span>
+        <span>Leader Teleop</span>
+      </button>
       <button class="nav-btn" data-page="monitoring">
         <span class="icon">📊</span>
         <span>Monitor</span>
@@ -1571,6 +1576,7 @@ rm -rf ~/Downloads/so101_studio_desktop*</pre>
                 <option value="keyboard">⌨️ Keyboard Teleoperator (teleop.py)</option>
                 <option value="gamepad">🎮 USB / Bluetooth Gamepad (HTML5)</option>
                 <option value="onscreen">🕹️ Virtual On-Screen D-Pad &amp; Jogger</option>
+                <option value="leader">🦾 Leader-Follower &amp; LeRobot Episode Recorder</option>
               </select>
             </div>
           </div>
@@ -1793,6 +1799,308 @@ rm -rf ~/Downloads/so101_studio_desktop*</pre>
                   <div class="key-cheat-item"><span class="keycap">T</span> Torque ON/OFF</div>
                   <div class="key-cheat-item"><span class="keycap">Q / Esc</span> Safe Park &amp; Quit</div>
                 </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ========================================================
+           PAGE: LEADER TELEOP & LEROBOT DATASET RECORDER (PIPER STYLE)
+           ======================================================== -->
+      <section class="page-view" id="page-leader-teleop">
+
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <span class="icon">🦾</span> SO-101 Leader-Follower Teleoperation &amp; LeRobot Dataset Studio
+            </div>
+            <div class="lf-hud-pills">
+              <span class="lf-pill warning" id="lf-badge-leader">🦾 Leader: Disconnected</span>
+              <span class="lf-pill warning" id="lf-badge-follower">🦾 Follower: Disconnected</span>
+              <span class="lf-pill warning" id="lf-badge-camera">📷 Camera: Standby</span>
+              <span class="lf-pill cyan">⚡ Sync: <strong id="lf-sync-rate" style="margin-left:4px;">0.0 Hz</strong></span>
+              <span class="lf-pill warning">⏱️ Latency: <strong id="lf-latency" style="margin-left:4px;">0.0 ms</strong></span>
+            </div>
+          </div>
+
+          <!-- LEADER-FOLLOWER & LEROBOT DEMONSTRATION RECORDING SUITE -->
+          <div id="teleop-leader-container">
+
+            <!-- DUAL PORT CONNECTION, TORQUE CONTROLS & TELEOP TOGGLE -->
+            <div class="lf-setup-card">
+              <div class="lf-ports-grid">
+                <div class="lf-port-item">
+                  <span class="lf-port-label">Leader Arm:</span>
+                  <select id="lf-leader-port-select" class="lf-port-select">
+                    <option value="/dev/ttyACM1">/dev/ttyACM1</option>
+                    <option value="/dev/ttyACM0">/dev/ttyACM0</option>
+                    <option value="simulation">simulation (Virtual Arm)</option>
+                  </select>
+                </div>
+                <div class="lf-port-item">
+                  <span class="lf-port-label">Follower Arm:</span>
+                  <select id="lf-follower-port-select" class="lf-port-select">
+                    <option value="/dev/ttyACM0">/dev/ttyACM0</option>
+                    <option value="/dev/ttyACM1">/dev/ttyACM1</option>
+                  </select>
+                </div>
+                <button class="btn btn-outline" id="btn-lf-refresh-ports" title="Scan available USB serial COM ports" style="padding:5px 10px; font-size:0.75rem;">🔄 Scan Ports</button>
+              </div>
+
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <button class="btn btn-outline" id="btn-lf-leader-torque" title="Toggle Leader Arm Torque (Keep OFF for smooth hand guiding)" style="padding:6px 12px; font-size:0.75rem;">
+                  ⚡ Leader Torque: OFF (Hand Guiding)
+                </button>
+                <button class="btn btn-success" id="btn-lf-follower-torque" title="Toggle Follower Arm Torque (Keep ACTIVE for mirroring)" style="padding:6px 12px; font-size:0.75rem;">
+                  ⚡ Follower Torque: ACTIVE
+                </button>
+                <button class="btn btn-primary" id="btn-lf-start-mirror" style="padding:6px 16px; font-weight:700; font-size:0.78rem;">
+                  ▶ Start Mirroring
+                </button>
+              </div>
+            </div>
+
+            <!-- TWO-COLUMN WORKSPACE GRID -->
+            <div class="lf-workspace-grid">
+
+              <!-- LEFT: COMPACT 6-JOINT TRACKING & DYNAMICS MONITOR -->
+              <div class="lf-card">
+                <div class="lf-card-header">
+                  <div class="lf-card-title">
+                    <span>📊</span> 6-DOF Joint Mirroring Dynamics
+                  </div>
+                  <span style="font-size:0.72rem; color:var(--text-muted); font-family:monospace;">Leader vs Follower</span>
+                </div>
+
+                <div class="lf-joints-list">
+                  <!-- Joint 1 -->
+                  <div class="lf-joint-card">
+                    <div class="lf-joint-header">
+                      <span class="lf-joint-name">Joint 1: Shoulder Pan</span>
+                      <div class="lf-joint-values">
+                        <span class="lf-val-leader" id="lf-val-l-1">0.0°</span>
+                        <span style="color:var(--text-muted);">vs</span>
+                        <span class="lf-val-follower" id="lf-val-f-1">0.0°</span>
+                        <span class="lf-val-error" id="lf-err-1">Δ 0.0°</span>
+                      </div>
+                    </div>
+                    <div class="lf-dual-progress">
+                      <div class="lf-bar-leader" id="lf-bar-l-1" style="width:50%;"></div>
+                      <div class="lf-bar-follower" id="lf-bar-f-1" style="width:50%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- Joint 2 -->
+                  <div class="lf-joint-card">
+                    <div class="lf-joint-header">
+                      <span class="lf-joint-name">Joint 2: Shoulder Lift</span>
+                      <div class="lf-joint-values">
+                        <span class="lf-val-leader" id="lf-val-l-2">0.0°</span>
+                        <span style="color:var(--text-muted);">vs</span>
+                        <span class="lf-val-follower" id="lf-val-f-2">0.0°</span>
+                        <span class="lf-val-error" id="lf-err-2">Δ 0.0°</span>
+                      </div>
+                    </div>
+                    <div class="lf-dual-progress">
+                      <div class="lf-bar-leader" id="lf-bar-l-2" style="width:50%;"></div>
+                      <div class="lf-bar-follower" id="lf-bar-f-2" style="width:50%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- Joint 3 -->
+                  <div class="lf-joint-card">
+                    <div class="lf-joint-header">
+                      <span class="lf-joint-name">Joint 3: Elbow Flex</span>
+                      <div class="lf-joint-values">
+                        <span class="lf-val-leader" id="lf-val-l-3">0.0°</span>
+                        <span style="color:var(--text-muted);">vs</span>
+                        <span class="lf-val-follower" id="lf-val-f-3">0.0°</span>
+                        <span class="lf-val-error" id="lf-err-3">Δ 0.0°</span>
+                      </div>
+                    </div>
+                    <div class="lf-dual-progress">
+                      <div class="lf-bar-leader" id="lf-bar-l-3" style="width:50%;"></div>
+                      <div class="lf-bar-follower" id="lf-bar-f-3" style="width:50%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- Joint 4 -->
+                  <div class="lf-joint-card">
+                    <div class="lf-joint-header">
+                      <span class="lf-joint-name">Joint 4: Wrist Flex</span>
+                      <div class="lf-joint-values">
+                        <span class="lf-val-leader" id="lf-val-l-4">0.0°</span>
+                        <span style="color:var(--text-muted);">vs</span>
+                        <span class="lf-val-follower" id="lf-val-f-4">0.0°</span>
+                        <span class="lf-val-error" id="lf-err-4">Δ 0.0°</span>
+                      </div>
+                    </div>
+                    <div class="lf-dual-progress">
+                      <div class="lf-bar-leader" id="lf-bar-l-4" style="width:50%;"></div>
+                      <div class="lf-bar-follower" id="lf-bar-f-4" style="width:50%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- Joint 5 -->
+                  <div class="lf-joint-card">
+                    <div class="lf-joint-header">
+                      <span class="lf-joint-name">Joint 5: Wrist Roll</span>
+                      <div class="lf-joint-values">
+                        <span class="lf-val-leader" id="lf-val-l-5">0.0°</span>
+                        <span style="color:var(--text-muted);">vs</span>
+                        <span class="lf-val-follower" id="lf-val-f-5">0.0°</span>
+                        <span class="lf-val-error" id="lf-err-5">Δ 0.0°</span>
+                      </div>
+                    </div>
+                    <div class="lf-dual-progress">
+                      <div class="lf-bar-leader" id="lf-bar-l-5" style="width:50%;"></div>
+                      <div class="lf-bar-follower" id="lf-bar-f-5" style="width:50%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- Joint 6 -->
+                  <div class="lf-joint-card">
+                    <div class="lf-joint-header">
+                      <span class="lf-joint-name">Joint 6: Gripper</span>
+                      <div class="lf-joint-values">
+                        <span class="lf-val-leader" id="lf-val-l-6">0.0%</span>
+                        <span style="color:var(--text-muted);">vs</span>
+                        <span class="lf-val-follower" id="lf-val-f-6">0.0%</span>
+                        <span class="lf-val-error" id="lf-err-6">Δ 0.0%</span>
+                      </div>
+                    </div>
+                    <div class="lf-dual-progress">
+                      <div class="lf-bar-leader" id="lf-bar-l-6" style="width:0%;"></div>
+                      <div class="lf-bar-follower" id="lf-bar-f-6" style="width:0%;"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- QUICK POSES -->
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-top:4px;">
+                  <button class="teleop-pose-btn" id="btn-lf-pose-home" title="Glide arm to home reference pose" style="padding:6px; font-size:0.72rem;">🏠 Home</button>
+                  <button class="teleop-pose-btn" id="btn-lf-pose-zero" title="Set joints to zero" style="padding:6px; font-size:0.72rem;">⭕ Zero (0°)</button>
+                  <button class="teleop-pose-btn" id="btn-lf-pose-rest" title="Fold arm into rest pose" style="padding:6px; font-size:0.72rem;">📦 Rest</button>
+                </div>
+
+                <div style="font-size:0.7rem; color:var(--text-muted); line-height:1.4; background:rgba(255,255,255,0.02); padding:8px; border-radius:6px; border:1px solid var(--border-color, #1e293b); margin-top:2px;">
+                  💡 <strong>Bilateral Setup:</strong> Leader arm servos have Torque <strong>OFF</strong> so you can smoothly guide it with your hands. Follower arm actively mirrors each motion at 50 Hz.
+                </div>
+
+              </div>
+
+              <!-- RIGHT: CAMERA ON TOP + LEROBOT RECORDER ON BOTTOM -->
+              <div style="display:flex; flex-direction:column; gap:14px;">
+
+                <!-- 1. DUAL CAMERAS SECTION (PLACED ABOVE START RECORDING) -->
+                <div class="lf-cam-section">
+                  <div class="lf-cam-header">
+                    <div class="lf-cam-title">
+                      <span>📷</span> Multi-Camera Vision (Dataset Synchronized)
+                    </div>
+                    <div class="lf-cam-actions">
+                      <select id="lf-cam-device-select" class="lf-port-select">
+                        <option value="/dev/video0">/dev/video0 (WebCam)</option>
+                      </select>
+                      <button class="btn btn-success" id="btn-lf-cam-connect" style="padding:4px 10px; font-size:0.74rem;">▶ Connect Camera</button>
+                      <button class="btn btn-danger" id="btn-lf-cam-disconnect" disabled style="padding:4px 8px; font-size:0.74rem;">⏹ Disconnect</button>
+                    </div>
+                  </div>
+
+                  <div class="lf-cameras-row">
+                    <div class="lf-cam-box">
+                      <img id="lf-top-cam-img" src="/api/camera/stream?mode=rgb" class="lf-cam-img" alt="Top Workspace Camera" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'320\' height=\'180\'><rect width=\'100%\' height=\'100%\' fill=\'%230b0f19\'/><text x=\'50%\' y=\'50%\' fill=\'%2364748b\' font-size=\'12\' dominant-baseline=\'middle\' text-anchor=\'middle\'>Top Workspace Cam (Click Connect Camera)</text></svg>'">
+                      <span class="lf-cam-tag">Top Workspace Cam</span>
+                    </div>
+                    <div class="lf-cam-box">
+                      <img id="lf-wrist-cam-img" src="/api/camera/stream?mode=depth" class="lf-cam-img" alt="Wrist Camera" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'320\' height=\'180\'><rect width=\'100%\' height=\'100%\' fill=\'%230b0f19\'/><text x=\'50%\' y=\'50%\' fill=\'%2364748b\' font-size=\'12\' dominant-baseline=\'middle\' text-anchor=\'middle\'>Wrist Cam (Eye-in-Hand)</text></svg>'">
+                      <span class="lf-cam-tag">Wrist Gripper Cam</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. LEROBOT EPISODE RECORDER (PLACED BELOW CAMERA PREVIEW) -->
+                <div class="lf-card">
+                  <div class="lf-card-header">
+                    <div class="lf-card-title">
+                      <span>🎬</span> LeRobot Demonstration Recorder (Piper Style)
+                    </div>
+                    <span id="lf-total-episodes-count" style="font-size:0.74rem; color:var(--text-muted); font-family:monospace;">(0 episodes saved)</span>
+                  </div>
+
+                  <div class="lf-recorder-box">
+                    <!-- Task Goal Input -->
+                    <div>
+                      <label style="font-size:0.73rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Demonstration Task / Instruction:</label>
+                      <input type="text" id="lf-task-input" value="Pick cube and place in target bowl" style="width:100%; margin-top:4px; padding:7px 10px; background:rgba(0,0,0,0.3); border:1px solid var(--border-color, #334155); border-radius:6px; color:var(--text-color, #f8fafc); font-size:0.8rem;">
+                    </div>
+
+                    <!-- Recorder Status HUD -->
+                    <div class="lf-recorder-hud">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="lf-rec-badge" id="lf-rec-status-badge">⚪ STANDBY</span>
+                        <span id="lf-rec-ep-num" style="font-weight:700; font-size:0.82rem; color:var(--cyan-accent);">Episode #1</span>
+                      </div>
+                      <div class="lf-rec-stats">
+                        <span>⏱️ <strong id="lf-rec-timer">0.0s</strong></span>
+                        <span>🎞️ <strong id="lf-rec-frames">0 frames</strong></span>
+                      </div>
+                    </div>
+
+                    <!-- Recorder Action Buttons -->
+                    <div class="lf-rec-controls">
+                      <button class="lf-rec-btn lf-btn-record" id="btn-lf-rec-start">
+                        <span>🔴</span> Start Episode
+                      </button>
+                      <button class="lf-rec-btn lf-btn-save" id="btn-lf-rec-save" disabled>
+                        <span>💾</span> Stop &amp; Save
+                      </button>
+                      <button class="lf-rec-btn lf-btn-discard" id="btn-lf-rec-discard" disabled>
+                        <span>🗑</span> Discard
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Recorded Demonstrations History Table -->
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                    <span style="font-size:0.73rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">📂 Recorded Dataset Episodes</span>
+                    <button class="btn btn-outline" id="btn-lf-refresh-episodes" style="font-size:0.7rem; padding:2px 7px;">🔄 Refresh</button>
+                  </div>
+
+                  <div class="lf-episodes-table-wrap">
+                    <table class="lf-table">
+                      <thead>
+                        <tr>
+                          <th>Ep #</th>
+                          <th>Task</th>
+                          <th>Frames</th>
+                          <th>Duration</th>
+                          <th>Rate</th>
+                          <th>Recorded At</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody id="lf-episodes-tbody">
+                        <tr>
+                          <td colspan="7" style="text-align:center; color:var(--text-muted); padding:14px;">
+                            No episodes recorded yet. Click "Start Episode" above to collect demonstrations!
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <!-- Info footer -->
+                  <div style="font-size:0.7rem; color:var(--text-muted); line-height:1.4; background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:6px; border:1px solid var(--border-color, #1e293b);">
+                    💡 <strong>Dataset Storage:</strong> Episodes are automatically formatted for Hugging Face LeRobot and saved under <code style="color:var(--cyan-accent);">data/lerobot_dataset/</code> (CSV trajectories + multi-camera timestamps). Ready for ACT, Diffusion Policy, and TD3 imitation learning training.
+                  </div>
+
+                </div>
+
               </div>
 
             </div>
@@ -3333,6 +3641,11 @@ Loading calibration...
         } else if (pageKey === 'teleop') {
           if (headerTitle) headerTitle.innerText = "SO-101 Interactive Teleoperation Suite";
           initTeleopDashboard();
+        } else if (pageKey === 'leader-teleop') {
+          if (headerTitle) headerTitle.innerText = "SO-101 Leader-Follower & LeRobot Episode Recorder";
+          if (window.SO101LeaderTeleop && typeof window.SO101LeaderTeleop.startPolling === 'function') {
+            window.SO101LeaderTeleop.startPolling();
+          }
         } else if (pageKey === 'monitoring') {
           if (headerTitle) headerTitle.innerText = "SO-101 Multi-Joint Real-Time Dynamics Monitoring";
           initMonitoringCards();
@@ -6900,5 +7213,6 @@ Loading calibration...
   </script>
   <script src="ai_deploy.js"></script>
   <script src="setup_page.js"></script>
+  <script src="teleop_leader.js"></script>
 </body>
 </html>

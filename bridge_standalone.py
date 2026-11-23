@@ -1293,10 +1293,18 @@ def make_app():
         (r"/api/camera/stream", CameraStreamHandler),
     ]
     try:
-        from ai_deployment_backend import AI_ROUTES
+        from ai_deployment_backend import AI_ROUTES, set_robot_driver, set_camera_manager
+        set_robot_driver(driver)
+        set_camera_manager(camera_manager)
         handlers.extend(AI_ROUTES)
     except Exception as e:
-        pass
+        print(f"[BRIDGE] Warning: could not load ai_deployment_backend: {e}")
+    try:
+        from leader_follower_manager import LEADER_FOLLOWER_ROUTES, init_leader_follower_routes
+        init_leader_follower_routes(driver, camera_manager)
+        handlers.extend(LEADER_FOLLOWER_ROUTES)
+    except Exception as e:
+        print(f"[BRIDGE] Warning: could not load leader_follower_manager: {e}")
     handlers.append((r"/(.*)", tornado.web.StaticFileHandler, {"path": str(WEB_DIR), "default_filename": "index.html"}))
     return tornado.web.Application(handlers)
 

@@ -1,0 +1,479 @@
+/* ==========================================================================
+   SO-101 LEADER-FOLLOWER TELEOPERATION & LEROBOT EPISODE RECORDER STYLES
+   ========================================================================== */
+
+#teleop-leader-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: lfFadeIn 0.25s ease-out;
+}
+
+@keyframes lfFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Status & Telemetry HUD */
+.lf-hud-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--card-inner, #0f172a);
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 8px;
+}
+
+.lf-hud-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color, #334155);
+  color: var(--text-color, #f1f5f9);
+}
+
+.lf-pill.success {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.lf-pill.warning {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.lf-pill.danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.lf-pill.cyan {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #22d3ee;
+}
+
+/* Connection & Teleop Setup Bar */
+.lf-setup-card {
+  background: var(--card-inner, #0f172a);
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lf-ports-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.lf-port-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lf-port-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+}
+
+.lf-port-select {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color, #334155);
+  color: var(--text-color, #f8fafc);
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-family: monospace;
+}
+
+/* Two-column Main Workspace Grid */
+.lf-workspace-grid {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 14px;
+}
+
+@media (max-width: 1080px) {
+  .lf-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Panel Card */
+.lf-card {
+  background: var(--card-inner, #0f172a);
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lf-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-color, #1e293b);
+  padding-bottom: 8px;
+}
+
+.lf-card-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-color, #f8fafc);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Compact Joint Angles Dynamics List */
+.lf-joints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lf-joint-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lf-joint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+.lf-joint-name {
+  font-weight: 600;
+  color: var(--text-color, #f8fafc);
+  font-size: 0.75rem;
+}
+
+.lf-joint-values {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: monospace;
+  font-size: 0.74rem;
+}
+
+.lf-val-leader {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.lf-val-follower {
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+.lf-val-error {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.lf-val-error.warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.lf-val-error.high {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.lf-dual-progress {
+  position: relative;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.lf-bar-leader {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #38bdf8;
+  opacity: 0.7;
+  transition: width 0.05s linear;
+}
+
+.lf-bar-follower {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: #a78bfa;
+  opacity: 0.9;
+  transition: width 0.05s linear;
+}
+
+/* Camera Control & Preview Box (Placed ABOVE Episode Recording) */
+.lf-cam-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.lf-cam-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lf-cam-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lf-cam-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lf-cameras-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lf-cam-box {
+  background: #000000;
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lf-cam-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lf-cam-tag {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+/* LeRobot Episode Recorder (Placed BELOW Camera Preview) */
+.lf-recorder-box {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lf-recorder-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.lf-rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.lf-rec-badge.recording {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  animation: lfPulse 1.2s infinite;
+}
+
+@keyframes lfPulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.lf-rec-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: var(--text-color, #f8fafc);
+}
+
+.lf-rec-controls {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 8px;
+}
+
+.lf-rec-btn {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+  border: none;
+}
+
+.lf-btn-record {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.lf-btn-record:hover {
+  background: #b91c1c;
+}
+
+.lf-btn-save {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.lf-btn-save:hover {
+  background: #059669;
+}
+
+.lf-btn-discard {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.lf-btn-discard:hover {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+/* Episodes History Table */
+.lf-episodes-table-wrap {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 6px;
+}
+
+.lf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+
+.lf-table th {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--text-muted, #94a3b8);
+  border-bottom: 1px solid var(--border-color, #1e293b);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.lf-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text-color, #f8fafc);
+}
+
+.lf-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.lf-btn-mini {
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-color, #334155);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-color, #f8fafc);
+}
+
+.lf-btn-mini:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
